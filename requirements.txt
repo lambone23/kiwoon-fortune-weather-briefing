@@ -2,3 +2,7 @@ openai
 python-dotenv
 requests
 sajupy
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
