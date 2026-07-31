@@ -20,7 +20,25 @@ from src.llm.fortune_generator import generate_fortune
 
 from typing import Optional
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from src.scheduler.daily_job import send_daily_fortunes
+
 app = FastAPI()
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(send_daily_fortunes, "cron", minute="*")
+
+
+@app.on_event("startup")
+def start_scheduler():
+    scheduler.start()
+    print("[스케줄러] 시작됨 — 매 분마다 발송 대상 확인")
+
+
+@app.on_event("shutdown")
+def stop_scheduler():
+    scheduler.shutdown()
+    print("[스케줄러] 종료됨")
 
 def get_db():
     db = SessionLocal()
