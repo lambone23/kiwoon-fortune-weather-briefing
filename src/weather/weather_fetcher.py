@@ -28,38 +28,22 @@ PTY_MAP = {"0": "없음", "1": "비", "2": "비/눈", "3": "눈", "4": "소나�
 
 BASE_TIMES = [2, 5, 8, 11, 14, 17, 20, 23]
 
-
-def _get_morning_base_datetime(now: datetime) -> tuple[str, str]:
+def _get_base_datetime_for(target_hour: int, now: datetime) -> tuple[str, str]:
     """
-    오늘 오전(06~12시) 데이터가 항상 포함되는, 이른 발표시각을 계산.
-    - 05시 이후면 오늘 05시 발표분 사용
-    - 02~05시 사이면 오늘 02시 발표분 사용
-    - 02시 이전이면 아직 오늘 발표분이 없으므로 전날 23시 발표분 사용
+    target_hour(0~23) 시각의 날씨 데이터를 포함하는, 가장 최근의 정규 발표시각을 계산.
+    - target_hour가 0~4시(자정~05시 이전)면, 전날 23시 발표분 사용
+      (해당 시각을 포함하는 당일 발표분이 아직 존재하지 않으므로 — 유일한 예외).
+    - 그 외에는, target_hour 이하인 정규 발표시각(02,05,08,11,14,17,20,23) 중
+      가장 늦은 것을 사용 (발표시각+1시간부터 데이터가 나오므로, 이렇게 하면
+      target_hour 데이터가 반드시 포함됨).
     """
-    if now.hour >= 5:
-        return now.strftime("%Y%m%d"), "0500"
-    elif now.hour >= 2:
-        return now.strftime("%Y%m%d"), "0200"
-    else:
+    if target_hour < 5:
         yesterday = now - timedelta(days=1)
         return yesterday.strftime("%Y%m%d"), "2300"
 
-
-def _get_latest_base_datetime(now: datetime) -> tuple[str, str]:
-    """
-    조회 시점 기준 가장 최근에 발표된 base_date, base_time을 계산.
-    """
-    available = [t for t in BASE_TIMES if t <= now.hour]
-    if available:
-        base_hour = max(available)
-        base_date = now.strftime("%Y%m%d")
-    else:
-        base_hour = BASE_TIMES[-1]
-        yesterday = now - timedelta(days=1)
-        base_date = yesterday.strftime("%Y%m%d")
-
-    return base_date, f"{base_hour:02d}00"
-
+    available = [t for t in BASE_TIMES if t <= target_hour]
+    base_hour = max(available)
+    return now.strftime("%Y%m%d"), f"{base_hour:02d}00"
 
 def fetch_raw_forecast(nx: int, ny: int, base_date: str, base_time: str) -> list[dict]:
     """
@@ -90,8 +74,8 @@ def fetch_raw_forecast(nx: int, ny: int, base_date: str, base_time: str) -> list
 
 def _pick_representative(items: list[dict], today_str: str, start: int, end: int) -> dict:
     """
-    items 중 오늘 날짜(today_str) & 지정된 시간 구간(start~end)에 해당하는
-    SKY/PTY/POP 값을 모아서, 그중 가장 이른 시각을 대표값으로 사용.
+    items 중 오늘 날짜(today_str) & 지정된 시간 구간(start~end, 양끝 포함)에
+    해당하는 SKY/PTY/POP 값을 모아서, 그중 가장 이른 시각을 대표값으로 사용.
     """
     candidates = {}
     for item in items:
@@ -101,7 +85,7 @@ def _pick_representative(items: list[dict], today_str: str, start: int, end: int
         if category not in ("SKY", "PTY", "POP"):
             continue
         fcst_time = int(item["fcstTime"])
-        if start <= fcst_time < end:
+        if start <= fcst_time <= end:   # < 에서 <= 로 변경 (경계값 누락 방지)
             candidates.setdefault(fcst_time, {})[category] = item["fcstValue"]
 
     if not candidates:
@@ -116,15 +100,22 @@ def _pick_representative(items: list[dict], today_str: str, start: int, end: int
     }
 
 
-def get_today_weather_summary(nx: int, ny: int) -> dict:
+def get_today_weather_summary(nx: int, ny: int, now: datetime = None) -> dict:
     """
     오늘 날짜의 예보 데이터를 오전/오후 요약 형태로 가공.
-    - 오전 데이터: 항상 당일 이른 발표분(05시 등) 기준
-    - 오후 데이터: 조회 시점 기준 최신 발표분 기준
-    - 최저기온(tmn): TMN 카테고리는 오늘자 값이 API 응답에서 아예 빠지는
-      경우가 있어(익일 이후 값만 제공하는 경우가 있음) 신뢰할 수 없으므로,
-      TMP(시간별 기온) 값들 중 최솟값을 직접 계산해서 사용.
-    - 최고기온(tmx): TMX는 오늘자 값이 안정적으로 제공되어 API 값을 그대로 사용.
+    - 오전(06~12시) 대표 시각(09시)과 오후(12~24시) 대표 시각(15시)을 기준으로,
+      각각 _get_base_datetime_for()를 호출해 적절한 발표분을 계산.
+    - 최저기온(tmn): 9시 기준 발표분(morning_items)은 발표시각+1시간 규칙 때문에
+      새벽(00~05시대) 데이터를 놓칠 수 있어 실제보다 높게 계산되는 문제가 있었음.
+      이를 해결하기 위해 항상 05시 기준 발표분을 별도로 조회해서, 그 안의
+      TMP(시간별 기온) 값들 중 최솟값을 tmn으로 사용 (새벽 시간대 포함 보장).
+      TMN 카테고리 자체는 당일 값이 API 응답에서 아예 빠지는 경우가 있어 신뢰 불가.
+    - 최고기온(tmx): TMX는 당일 값이 안정적으로 제공되어, morning_items에서
+      API 값을 그대로 사용.
+
+    Args:
+        now: 기준 시각 (기본값 None이면 실제 현재 시각 사용).
+             테스트 시 임의의 시각을 주입해서 특정 시간대 케이스를 검증할 수 있음.
 
     Returns:
         dict: {
@@ -134,32 +125,41 @@ def get_today_weather_summary(nx: int, ny: int) -> dict:
             "afternoon": {"sky": "맑음", "pty": "없음", "pop": 0},
         }
     """
-    now = datetime.now()
+    if now is None:
+        now = datetime.now()
     today_str = now.strftime("%Y%m%d")
 
-    morning_date, morning_time = _get_morning_base_datetime(now)
-    latest_date, latest_time = _get_latest_base_datetime(now)
+    morning_date, morning_time = _get_base_datetime_for(9, now)
+    afternoon_date, afternoon_time = _get_base_datetime_for(15, now)
+    tmn_date, tmn_time = _get_base_datetime_for(5, now)
 
     morning_items = fetch_raw_forecast(nx, ny, morning_date, morning_time)
 
-    if (morning_date, morning_time) == (latest_date, latest_time):
+    if (morning_date, morning_time) == (afternoon_date, afternoon_time):
         afternoon_items = morning_items
     else:
-        afternoon_items = fetch_raw_forecast(nx, ny, latest_date, latest_time)
+        afternoon_items = fetch_raw_forecast(nx, ny, afternoon_date, afternoon_time)
 
-    tmn = tmx = None
-    today_tmp_values = []
+    if (tmn_date, tmn_time) == (morning_date, morning_time):
+        tmn_items = morning_items
+    else:
+        tmn_items = fetch_raw_forecast(nx, ny, tmn_date, tmn_time)
 
+    tmx = None
     for item in morning_items:
         if item["fcstDate"] != today_str:
             continue
         if item["category"] == "TMX":
             tmx = round(float(item["fcstValue"]))
-        elif item["category"] == "TMP":
-            today_tmp_values.append(float(item["fcstValue"]))
 
-    if today_tmp_values:
-        tmn = round(min(today_tmp_values))
+    tmn = None
+    tmn_tmp_values = [
+        float(item["fcstValue"])
+        for item in tmn_items
+        if item["fcstDate"] == today_str and item["category"] == "TMP"
+    ]
+    if tmn_tmp_values:
+        tmn = round(min(tmn_tmp_values))
 
     morning_summary = _pick_representative(morning_items, today_str, 600, 1200)
     afternoon_summary = _pick_representative(afternoon_items, today_str, 1200, 1800)
@@ -171,7 +171,6 @@ def get_today_weather_summary(nx: int, ny: int) -> dict:
         "morning": morning_summary,
         "afternoon": afternoon_summary,
     }
-
 
 def _describe(part: dict) -> str:
     """
@@ -231,8 +230,24 @@ def get_weather_by_region(region_1: str, region_2: str) -> dict:
     return get_today_weather_summary(nx, ny)
 
 if __name__ == "__main__":
-    # 지역명 기반 조회 테스트
-    summary = get_weather_by_region("서울특별시", "강남구")
-    print(summary)
-    print()
-    print(format_weather_summary(summary))
+    TEST_DATE = datetime(2026, 8, 2)  # 테스트 기준 날짜 (이미 지나간 날짜여야 함)
+
+    test_cases = [
+        ("자정 직전 (23:59)", TEST_DATE.replace(hour=23, minute=59)),
+        ("자정~05시 이전 (02:30)", TEST_DATE.replace(hour=2, minute=30)),
+        ("새벽 5시 (05:00)", TEST_DATE.replace(hour=5, minute=0)),
+        ("경계값 케이스 (17:00, 발표시각+1시간=18시 경계)", TEST_DATE.replace(hour=17, minute=0)),
+        ("일반 케이스 (14:30)", TEST_DATE.replace(hour=14, minute=30)),
+    ]
+
+    for label, fake_now in test_cases:
+        print(f"\n{'=' * 50}")
+        print(f"[테스트] {label}  (기준 시각: {fake_now})")
+        print('=' * 50)
+        try:
+            summary = get_today_weather_summary(nx=61, ny=126, now=fake_now)
+            print(summary)
+            print()
+            print(format_weather_summary(summary))
+        except Exception as e:
+            print(f"에러 발생: {e}")
