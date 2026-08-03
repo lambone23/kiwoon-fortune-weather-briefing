@@ -24,6 +24,11 @@ class Subscriber(Base):
     birth_minute = Column(Integer, default=0)
     gender = Column(String, nullable=False)          # "남성" 또는 "여성"
 
+    # ── 날씨 관련 ──
+    region_1 = Column(String, nullable=False)   # 시/도 (예: "서울특별시")
+    region_2 = Column(String, nullable=False)   # 구/군 (예: "강남구")
+
+
     notify_time = Column(String, nullable=False)      # 예: "07:30"
     notify_enabled = Column(Boolean, default=True)
 

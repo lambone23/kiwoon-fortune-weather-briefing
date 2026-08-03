@@ -65,6 +65,8 @@ class SubscribeRequest(BaseModel):
     hour: int
     minute: int = 0
     gender: str
+    region_1: str   # 시/도 (예: "서울특별시")
+    region_2: str   # 구/군 (예: "강남구")
     notify_time: str   # 예: "07:30"
     notify_enabled: bool = True   # 기본값 True (안 보내면 알림 받는 걸로 간주)
 
@@ -76,6 +78,8 @@ class UpdateSubscriberRequest(BaseModel):
     hour: Optional[int] = None
     minute: Optional[int] = None
     gender: Optional[str] = None
+    region_1: Optional[str] = None
+    region_2: Optional[str] = None
     notify_time: Optional[str] = None
 
 class ResendLinkRequest(BaseModel):
@@ -113,6 +117,8 @@ def subscribe(req: SubscribeRequest, db: Session = Depends(get_db)):
         birth_hour=req.hour,
         birth_minute=req.minute,
         gender=req.gender,
+        region_1=req.region_1,
+        region_2=req.region_2,
         notify_time=req.notify_time,
         notify_enabled=req.notify_enabled, # 변경: 고정값 True 대신 사용자 선택값
         manage_token=manage_token,
@@ -164,6 +170,8 @@ def get_subscriber_info(token: str, db: Session = Depends(get_db)):
         "birth_hour": subscriber.birth_hour,
         "birth_minute": subscriber.birth_minute,
         "gender": subscriber.gender,
+        "region_1": subscriber.region_1,
+        "region_2": subscriber.region_2,        
         "notify_time": subscriber.notify_time,
         "notify_enabled": subscriber.notify_enabled,
     }
@@ -188,6 +196,10 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
         subscriber.birth_minute = req.minute
     if req.gender is not None:
         subscriber.gender = req.gender
+    if req.region_1 is not None:
+        subscriber.region_1 = req.region_1
+    if req.region_2 is not None:
+        subscriber.region_2 = req.region_2        
     if req.notify_time is not None:
         subscriber.notify_time = req.notify_time
 
@@ -206,6 +218,7 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
             <li>생년월일: {subscriber.calendar_type} {subscriber.birth_year}-{subscriber.birth_month:02d}-{subscriber.birth_day:02d}</li>
             <li>태어난 시간: {subscriber.birth_hour:02d}:{subscriber.birth_minute:02d}</li>
             <li>성별: {subscriber.gender}</li>
+            <li>날씨 지역: {subscriber.region_1} {subscriber.region_2}</li>
             <li>알림 시간: {subscriber.notify_time}</li>
             <li>알림 상태: {"켜짐" if subscriber.notify_enabled else "꺼짐"}</li>
         </ul>
@@ -225,6 +238,8 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
         "birth_hour": subscriber.birth_hour,
         "birth_minute": subscriber.birth_minute,
         "gender": subscriber.gender,
+        "region_1": subscriber.region_1,
+        "region_2": subscriber.region_2,        
         "notify_time": subscriber.notify_time,
         "notify_enabled": subscriber.notify_enabled,
     }
