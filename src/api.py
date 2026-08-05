@@ -4,8 +4,12 @@ FastAPI 서버 진입점.
 - calculator.py, prompts.py, fortune_generator.py는 수정 없이 그대로 재사용.
 """
 
+from fastapi.middleware.cors import CORSMiddleware
+
 import os
 from src.notify.email_sender import send_email
+from src.weather.region_lookup import get_all_region_1, get_region_2_list
+from src.weather.weather_fetcher import get_weather_by_region, format_weather_summary
 
 import secrets
 
@@ -25,9 +29,24 @@ from src.scheduler.daily_job import send_daily_fortunes
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 scheduler = BackgroundScheduler()
 scheduler.add_job(send_daily_fortunes, "cron", minute="*")
 
+@app.get("/regions")
+def get_regions():
+    return {"regions": get_all_region_1()}
+
+@app.get("/regions/{region_1}")
+def get_sub_regions(region_1: str):
+    return {"region_2_list": get_region_2_list(region_1)}
 
 @app.on_event("startup")
 def start_scheduler():
@@ -55,6 +74,8 @@ class FortuneRequest(BaseModel):
     hour: int
     minute: int = 0
     gender: str          # "남성" 또는 "여성"
+    region_1: str   # 시/도
+    region_2: str   # 구/군
 
 class SubscribeRequest(BaseModel):
     email: str
@@ -95,9 +116,13 @@ def fortune_preview(req: FortuneRequest):
     summary = format_saju_summary(saju)
     fortune_text = generate_fortune(saju, summary, gender=req.gender)
 
+    weather_summary = get_weather_by_region(req.region_1, req.region_2)
+    weather_text = format_weather_summary(weather_summary)
+
     return {
         "saju_summary": summary,
         "fortune": fortune_text,
+        "weather": weather_text,
     }
 
 @app.post("/subscribe")
@@ -140,20 +165,20 @@ def subscribe(req: SubscribeRequest, db: Session = Depends(get_db)):
             <p>매일 {req.notify_time}에 오늘의 운세 브리핑을 보내드릴게요.</p>
             <p>내 정보 수정 및 알림 끄기는 아래 링크에서 가능합니다:<br>
             <a href="{manage_link}">내 정보 관리하기</a></p>
+            <p>관리 링크는 본인 확인용 비밀 링크예요. 다른 사람에게 공유하지 마세요.</p>
             <p>감사합니다.</p>
             """,
         )
     # ── email 관련 End ──
 
-    if req.notify_enabled:
-        return {
-            "message": "구독 신청이 완료되었습니다. 이메일을 확인해주세요.",
-        }
-    else:
-        return {
-            "message": "알림 없이 정보만 저장되었습니다. 나중에 알림을 받고 싶으시면 아래 링크에서 켜실 수 있어요.",
-            "manage_link": manage_link,
-        }
+    return {
+        "message": (
+            "구독 신청이 완료되었습니다. 이메일을 확인해주세요."
+            if req.notify_enabled
+            else "알림 없이 정보만 저장되었습니다. 나중에 알림을 받고 싶으시면 아래 링크에서 켜실 수 있어요."
+        ),
+        "manage_link": manage_link,
+    }
 
 @app.get("/manage/{token}")
 def get_subscriber_info(token: str, db: Session = Depends(get_db)):
@@ -224,6 +249,7 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
         </ul>
         <p>내 정보 수정 및 알림 끄기는 아래 링크에서 가능합니다:<br>
         <a href="{manage_link}">내 정보 관리하기</a></p>
+        <p>관리 링크는 본인 확인용 비밀 링크예요. 다른 사람에게 공유하지 마세요.</p>
         <p>감사합니다.</p>
         """,
     )
@@ -265,6 +291,7 @@ def toggle_notify(token: str, db: Session = Depends(get_db)):
         <p>알림 상태가 <b>{status_text}</b>으로 변경되었습니다.</p>
         <p>내 정보 수정 및 알림 설정은 아래 링크에서 가능합니다:<br>
         <a href="{manage_link}">내 정보 관리하기</a></p>
+        <p>관리 링크는 본인 확인용 비밀 링크예요. 다른 사람에게 공유하지 마세요.</p>
         <p>감사합니다.</p>
         """,
     )
@@ -288,6 +315,7 @@ def resend_manage_link(req: ResendLinkRequest, db: Session = Depends(get_db)):
             <p>안녕하세요, Kiwoon입니다.</p>
             <p>요청하신 관리 링크입니다:</p>
             <p><a href="{manage_link}">내 정보 관리하기</a></p>
+            <p>관리 링크는 본인 확인용 비밀 링크예요. 다른 사람에게 공유하지 마세요.</p>
             <p>감사합니다.</p>
             """,
         )
@@ -295,3 +323,26 @@ def resend_manage_link(req: ResendLinkRequest, db: Session = Depends(get_db)):
     return {
         "message": "해당 이메일로 등록된 계정이 있다면, 관리 링크를 보내드렸습니다.",
     }
+
+@app.delete("/manage/{token}")
+def delete_subscriber(token: str, db: Session = Depends(get_db)):
+    subscriber = db.query(Subscriber).filter(Subscriber.manage_token == token).first()
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="유효하지 않은 링크입니다.")
+
+    email = subscriber.email
+    db.delete(subscriber)
+    db.commit()
+
+    send_email(
+        to_email=email,
+        subject="[Kiwoon] 탈퇴가 완료되었습니다",
+        html_body="""
+        <p>안녕하세요, Kiwoon입니다.</p>
+        <p>요청하신 대로 탈퇴 처리가 완료되어, 등록하신 모든 정보가 삭제되었습니다.</p>
+        <p>다시 이용하고 싶으시면 언제든 새로 신청해주세요.</p>
+        <p>감사합니다.</p>
+        """,
+    )
+
+    return {"message": "탈퇴가 완료되었습니다. 그동안 이용해주셔서 감사합니다."}
