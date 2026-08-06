@@ -126,11 +126,16 @@ export default function ManagePage() {
 
     setSaving(true);
     try {
+      // ① 알림 토글이 필요하면 먼저 반영 — DB에 최신 상태를 먼저 심어둠
+      if (notifyEnabled !== originalNotifyEnabled) {
+        await toggleNotify(token);
+        setOriginalNotifyEnabled(notifyEnabled);
+      }
+
+      // ② 그 다음 정보 수정 — 이 시점엔 notify_enabled가 이미 최신값이라 메일도 정확함
       await updateSubscriberInfo(token, {
         calendar_type: calendarType,
-        year,
-        month,
-        day,
+        year, month, day,
         hour: Number(hour),
         minute: minuteValue,
         gender,
@@ -138,11 +143,6 @@ export default function ManagePage() {
         region_2: region2,
         notify_time: notifyTime,
       });
-
-      if (notifyEnabled !== originalNotifyEnabled) {
-        await toggleNotify(token);
-        setOriginalNotifyEnabled(notifyEnabled);
-      }
 
       setSaveMessage("변경사항이 저장되었어요.");
     } catch (err: any) {

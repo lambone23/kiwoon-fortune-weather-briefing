@@ -7,7 +7,7 @@ FastAPI 서버 진입점.
 from fastapi.middleware.cors import CORSMiddleware
 
 import os
-from src.notify.email_sender import send_email
+from src.notify.email_sender import send_email, build_notification_email
 from src.weather.region_lookup import get_all_region_1, get_region_2_list
 from src.weather.weather_fetcher import get_weather_by_region, format_weather_summary
 
@@ -160,14 +160,16 @@ def subscribe(req: SubscribeRequest, db: Session = Depends(get_db)):
         send_email(
             to_email=req.email,
             subject="[Kiwoon] 오늘의 운세 알림 신청이 완료되었습니다",
-            html_body=f"""
-            <p>안녕하세요, Kiwoon입니다.</p>
-            <p>매일 {req.notify_time}에 오늘의 운세 브리핑을 보내드릴게요.</p>
-            <p>내 정보 수정 및 알림 끄기는 아래 링크에서 가능합니다:<br>
-            <a href="{manage_link}">내 정보 관리하기</a></p>
-            <p>관리 링크는 본인 확인용 비밀 링크예요. 다른 사람에게 공유하지 마세요.</p>
-            <p>감사합니다.</p>
-            """,
+            html_body=build_notification_email(
+                icon="✅",
+                title="신청이 완료되었어요",
+                message_lines=[
+                    f"매일 <b>{req.notify_time}</b>에 오늘의 운세 브리핑을 보내드릴게요.",
+                    f"날씨 지역: {req.region_1} {req.region_2}",
+                ],
+                manage_link=manage_link,
+                accent_color="#3aa66b",   # 완료 화면의 초록과 동일 톤
+            ),
         )
     # ── email 관련 End ──
 
@@ -236,22 +238,18 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
     send_email(
         to_email=subscriber.email,
         subject="[Kiwoon] 정보가 수정되었습니다",
-        html_body=f"""
-        <p>안녕하세요, Kiwoon입니다.</p>
-        <p>아래와 같이 정보가 정상적으로 수정되었습니다.</p>
-        <ul>
-            <li>생년월일: {subscriber.calendar_type} {subscriber.birth_year}-{subscriber.birth_month:02d}-{subscriber.birth_day:02d}</li>
-            <li>태어난 시간: {subscriber.birth_hour:02d}:{subscriber.birth_minute:02d}</li>
-            <li>성별: {subscriber.gender}</li>
-            <li>날씨 지역: {subscriber.region_1} {subscriber.region_2}</li>
-            <li>알림 시간: {subscriber.notify_time}</li>
-            <li>알림 상태: {"켜짐" if subscriber.notify_enabled else "꺼짐"}</li>
-        </ul>
-        <p>내 정보 수정 및 알림 끄기는 아래 링크에서 가능합니다:<br>
-        <a href="{manage_link}">내 정보 관리하기</a></p>
-        <p>관리 링크는 본인 확인용 비밀 링크예요. 다른 사람에게 공유하지 마세요.</p>
-        <p>감사합니다.</p>
-        """,
+        html_body=build_notification_email(
+            icon="✏️",
+            title="정보가 수정되었어요",
+            message_lines=[
+                f"생년월일: {subscriber.calendar_type} {subscriber.birth_year}-{subscriber.birth_month:02d}-{subscriber.birth_day:02d}",
+                f"태어난 시간: {subscriber.birth_hour:02d}:{subscriber.birth_minute:02d} · 성별: {subscriber.gender}",
+                f"날씨 지역: {subscriber.region_1} {subscriber.region_2}",
+                f"알림 시간: {subscriber.notify_time} · 알림 상태: {'켜짐' if subscriber.notify_enabled else '꺼짐'}",
+            ],
+            manage_link=manage_link,
+            accent_color="#4a90d9",
+        ),
     )
 
     return {
@@ -286,14 +284,16 @@ def toggle_notify(token: str, db: Session = Depends(get_db)):
     send_email(
         to_email=subscriber.email,
         subject=f"[Kiwoon] 알림이 {status_text}으로 변경되었습니다",
-        html_body=f"""
-        <p>안녕하세요, Kiwoon입니다.</p>
-        <p>알림 상태가 <b>{status_text}</b>으로 변경되었습니다.</p>
-        <p>내 정보 수정 및 알림 설정은 아래 링크에서 가능합니다:<br>
-        <a href="{manage_link}">내 정보 관리하기</a></p>
-        <p>관리 링크는 본인 확인용 비밀 링크예요. 다른 사람에게 공유하지 마세요.</p>
-        <p>감사합니다.</p>
-        """,
+        html_body=build_notification_email(
+            icon="🔔" if subscriber.notify_enabled else "🔕",
+            title=f"알림이 {status_text}으로 변경되었어요",
+            message_lines=[
+                f"매일 {subscriber.notify_time}에 브리핑을 받아보실 수 있어요." if subscriber.notify_enabled
+                else "알림이 꺼져서 더 이상 브리핑 메일이 가지 않아요.",
+            ],
+            manage_link=manage_link,
+            accent_color="#3aa66b" if subscriber.notify_enabled else "#c99a5a",
+        ),
     )
 
     return {
@@ -337,11 +337,33 @@ def delete_subscriber(token: str, db: Session = Depends(get_db)):
     send_email(
         to_email=email,
         subject="[Kiwoon] 탈퇴가 완료되었습니다",
-        html_body="""
-        <p>안녕하세요, Kiwoon입니다.</p>
-        <p>요청하신 대로 탈퇴 처리가 완료되어, 등록하신 모든 정보가 삭제되었습니다.</p>
-        <p>다시 이용하고 싶으시면 언제든 새로 신청해주세요.</p>
-        <p>감사합니다.</p>
+        html_body=f"""
+        <meta name="color-scheme" content="dark light">
+        <meta name="supported-color-schemes" content="dark light">
+        <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; max-width:480px; margin:0 auto;">
+            <div style="background-color:#3a3a37; padding:24px 16px; border-radius:14px;">
+                <div style="text-align:center; margin-bottom:20px;">
+                    <span style="font-size:20px; font-weight:700; color:#f5f3ee;">🌤️ KI WOON 기운 🔮</span>
+                </div>
+                <div style="border:1px solid #5a5955; border-radius:12px; overflow:hidden;">
+                    <div style="background-color:#8a4a4a; padding:14px 16px;">
+                        <span style="font-size:15px; font-weight:600; color:#ffffff;">👋 탈퇴가 완료되었어요</span>
+                    </div>
+                    <div style="background-color:#4d4c48; padding:18px 16px;">
+                        <p style="margin:0; color:#e8e6e0; font-size:14px; line-height:1.6;">
+                            요청하신 대로 탈퇴 처리가 완료되어, 등록하신 모든 정보가 삭제되었습니다.
+                        </p>
+                        <p style="margin:10px 0 0 0; color:#e8e6e0; font-size:14px; line-height:1.6;">
+                            다시 이용하고 싶으시면 언제든 새로 신청해주세요.
+                        </p>
+                    </div>
+                </div>
+                <p style="text-align:center; font-size:11px; color:#6a6965; margin-top:20px;">
+                    문의: lambone234567@gmail.com<br>
+                    © 2026 Kiwoon. All rights reserved.
+                </p>
+            </div>
+        </div>
         """,
     )
 
