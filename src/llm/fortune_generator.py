@@ -11,7 +11,10 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from src.llm.prompts import SYSTEM_PROMPT, build_user_prompt
-from src.saju.calculator import get_saju, get_lucky_info, format_lucky_info, get_saju_from_lunar
+from src.saju.calculator import (
+    get_saju, get_lucky_info, format_lucky_info, get_saju_from_lunar,
+    get_day_master_strength, get_ten_gods_summary, format_ten_gods_summary,
+)
 
 load_dotenv()
 
@@ -52,12 +55,16 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
     lucky = get_lucky_info(saju)  # ← 변경: day_stem 대신 saju 전체를 넘김
     lucky_info = format_lucky_info(lucky)
 
+    strength = get_day_master_strength(saju)
+    ten_gods_summary = format_ten_gods_summary(get_ten_gods_summary(saju))
+
     response = client.chat.completions.create(
         model="gpt-5-mini",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": build_user_prompt(
-                saju_summary, today_str, today_iljin, lucky_info, gender
+                saju_summary, today_str, today_iljin, lucky_info, gender,
+                strength=strength, ten_gods_summary=ten_gods_summary,
             )},
         ],
     )

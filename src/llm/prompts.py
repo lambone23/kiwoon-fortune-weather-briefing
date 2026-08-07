@@ -49,7 +49,17 @@ SYSTEM_PROMPT = """당신은 사주 명리학에 정통하면서도, 사주를 �
    (억지로 늘리지 마세요).
 9. 근거 없는 의학적 진단, 확정적인 미래 예측(예: "반드시 사고가 난다"), 과도하게
    불안을 조장하는 표현은 사용하지 마세요. 조언은 항상 건설적인 방향으로 제시하세요.
-10. 출력은 아래 형식을 정확히 지켜서 작성하세요 (마크다운 기호나 별표 없이):
+10. 학업운·직업운 등에서 구체적인 행동 스타일(예: 협업형 vs 단독형 학습,
+    적극적 vs 신중한 투자 등)을 언급할 때는, 반드시 주어진 사주 정보
+    (오행 분포, 십성 관계)에서 그 근거를 찾을 수 있는 경우에만 언급하세요.
+    뚜렷한 근거가 없다면 스타일을 단정하지 말고, 일반적인 조언
+    (예: "본인에게 맞는 방식을 찾아 집중하면 좋은 흐름입니다")으로
+    표현하세요.
+11. 성별 정보가 주어지지 않은 경우, 절대로 임의로 성별을 가정하거나
+    "여성분/남성분"과 같은 성별 지칭 표현을 사용하지 마세요. 성별
+    정보가 주어진 경우에도, 자연스러운 빈도로만 참고하고 과도하게
+    반복 언급하지 마세요.
+12. 출력은 아래 형식을 정확히 지켜서 작성하세요 (마크다운 기호나 별표 없이):
 
 총운: (내용)
 재물운: (내용)
@@ -64,7 +74,8 @@ SYSTEM_PROMPT = """당신은 사주 명리학에 정통하면서도, 사주를 �
 
 
 def build_user_prompt(saju_summary: str, today_str: str, today_iljin: str,
-                       lucky_info: str, gender: str = None) -> str:
+                       lucky_info: str, gender: str = None,
+                       strength: str = None, ten_gods_summary: str = None) -> str:
     """
     사용자 사주 요약, 오늘 날짜, 오늘의 일진, 행운 컬러/방향/소재, (선택) 성별을
     받아서 실제 LLM에 보낼 유저 프롬프트를 조립.
@@ -75,8 +86,13 @@ def build_user_prompt(saju_summary: str, today_str: str, today_iljin: str,
         today_iljin: 오늘 날짜의 일주 간지 (예: "甲辰 (甲辰)")
         lucky_info: saju/calculator.py의 format_lucky_info() 결과
         gender: 사용자 성별 (예: "남성", "여성"). 없으면 생략 가능
+        strength: 신강/신약 판단 결과 (saju/calculator.py의 get_day_master_strength())
+        ten_gods_summary: 십성 요약 (saju/calculator.py의 format_ten_gods_summary())
     """
     gender_line = f"[성별]\n{gender}\n\n" if gender else ""
+    strength_line = f"[기운의 강약]\n{strength} (일간의 기운이 {'강한' if strength == '신강' else '약한'} 편)\n\n" if strength else ""
+    ten_gods_line = f"[십성 관계]\n{ten_gods_summary}\n\n" if ten_gods_summary else ""
+
 
     return f"""아래는 사용자의 사주 정보와 오늘의 일진, 행운 정보입니다.
 (이 값들은 이미 정확히 계산된 데이터이며, 아래 정보에 나온 한자나 전문 용어를
@@ -87,7 +103,7 @@ def build_user_prompt(saju_summary: str, today_str: str, today_iljin: str,
 [사용자 사주]
 {saju_summary}
 
-{gender_line}[오늘 날짜]
+{gender_line}{strength_line}{ten_gods_line}[오늘 날짜]
 {today_str}
 
 [오늘의 일진]
