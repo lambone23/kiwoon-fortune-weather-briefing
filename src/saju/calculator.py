@@ -238,6 +238,7 @@ TOWANG_BRANCHES = {"辰", "戌", "丑", "未"}
 WANGSANGHYUSUSA_ORDER = ["사", "수", "휴", "상", "왕"]
 
 
+
 def get_element_distribution(saju: dict) -> dict:
     """
     사주 여덟 글자(천간 4개 + 지지 4개, 지지 속 지장간 포함)를 오행별로
@@ -505,6 +506,65 @@ def format_ten_gods_summary(ten_gods: dict) -> str:
     return "\n".join(f"{key}: {value}" for key, value in ten_gods.items())
 
 
+
+
+# 십성 세력 그룹 (오행 상생상극 관계에 따라 10개 십성을 5개 세력으로 묶음)
+TEN_GOD_GROUPS = {
+    "비겁": ["비견", "겁재"],
+    "식상": ["식신", "상관"],
+    "재성": ["편재", "정재"],
+    "관성": ["편관", "정관"],
+    "인성": ["편인", "정인"],
+}
+
+# 세력 편중 판단 기준: 십성 7개 항목(년간/월간/시간/년지/월지/일지/시지) 중
+# 한 세력이 몇 개 이상이면 "두드러진다"고 볼지 정하는 임의 기준.
+# ※ 명리학 문헌에 정해진 절대 기준은 없으며, 7개 중 절반에 조금 못 미치는
+#   수준(3개 이상)을 "편중"으로 간주한 근사치. 실제 서비스 운영 중
+#   더 적합한 기준이 발견되면 조정 가능.
+TEN_GOD_DOMINANCE_THRESHOLD = 3
+
+
+def get_ten_gods_distribution_summary(ten_gods: dict) -> str:
+    """
+    십성 7개 결과(get_ten_gods_summary() 반환값)를 5개 세력(비겁/식상/
+    재성/관성/인성)별로 집계해서, 어느 세력이 두드러지는지 텍스트로 요약.
+
+    - 재물운처럼 세력 편중이 실질적으로 중요한 항목에서, LLM이 개별
+      십성 나열만 보고 "비겁 과다" 같은 판단을 매번 스스로 추론하지
+      않아도 되도록, 세력 편중 자체를 명시적으로 계산해 전달하기 위함.
+    - TEN_GOD_DOMINANCE_THRESHOLD(3개) 이상인 세력이 있으면 "두드러지게
+      많은 편"으로 명시.
+
+    Args:
+        ten_gods: get_ten_gods_summary()의 반환값
+                  (예: {"년간": "식신", "월간": "편인", ...})
+
+    Returns:
+        str: "비겁 3개, 식상 1개, 인성 2개, 관성 1개 — 이 중 비겁이
+             두드러지게 많은 편" 형태의 요약 텍스트
+    """
+    counts = {group: 0 for group in TEN_GOD_GROUPS}
+    for value in ten_gods.values():
+        for group, members in TEN_GOD_GROUPS.items():
+            if value in members:
+                counts[group] += 1
+
+    dominant = [group for group, count in counts.items()
+                if count >= TEN_GOD_DOMINANCE_THRESHOLD]
+
+    lines = [f"{group} {count}개" for group, count in counts.items() if count > 0]
+    summary = ", ".join(lines)
+
+    if dominant:
+            particle = "이" if len(dominant) == 1 else "가"
+            summary += f" — 이 중 {', '.join(dominant)}{particle} 두드러지게 많은 편"
+
+    return summary
+
+
+
+
 # ── 대운(大運) 계산 ──────────────────────────────────────
 
 STEMS_ORDER = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
@@ -666,6 +726,8 @@ if __name__ == "__main__":
     print("[십성]")
     print(format_ten_gods_summary(ten_gods))
     print()
+    print("[십성 세력 분포]")
+    print(get_ten_gods_distribution_summary(ten_gods))
 
     daeun = get_daeun(saju, 1990, 10, 10, 14, 30, gender="여성", periods=10)
     print("[대운]")

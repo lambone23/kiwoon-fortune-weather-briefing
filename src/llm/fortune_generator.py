@@ -14,8 +14,8 @@ from src.llm.prompts import SYSTEM_PROMPT, build_user_prompt
 from src.saju.calculator import (
     get_saju, get_lucky_info, format_lucky_info, get_saju_from_lunar,
     get_day_master_strength, get_ten_gods_summary, format_ten_gods_summary,
+    get_ten_gods_distribution_summary,
 )
-
 load_dotenv()
 
 client = OpenAI(
@@ -56,7 +56,9 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
     lucky_info = format_lucky_info(lucky)
 
     strength = get_day_master_strength(saju)
-    ten_gods_summary = format_ten_gods_summary(get_ten_gods_summary(saju))
+    ten_gods_dict = get_ten_gods_summary(saju)
+    ten_gods_summary = format_ten_gods_summary(ten_gods_dict)
+    ten_gods_distribution = get_ten_gods_distribution_summary(ten_gods_dict)
 
     response = client.chat.completions.create(
         model="gpt-5-mini",
@@ -65,6 +67,7 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
             {"role": "user", "content": build_user_prompt(
                 saju_summary, today_str, today_iljin, lucky_info, gender,
                 strength=strength, ten_gods_summary=ten_gods_summary,
+                ten_gods_distribution=ten_gods_distribution,
             )},
         ],
     )
