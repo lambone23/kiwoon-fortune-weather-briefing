@@ -62,8 +62,7 @@ import pandas as pd
 import sajupy
 from sajupy import calculate_saju, lunar_to_solar
 
-
-def get_saju(year: int, month: int, day: int, hour: int, minute: int = 0,
+def get_saju(year: int, month: int, day: int, hour: int = None, minute: int = 0,
              use_solar_time: bool = False, city: str = None, utc_offset: int = 9) -> dict:
     """
     생년월일시를 입력받아 사주(년/월/일/시주) 정보를 계산해서 반환.
@@ -71,17 +70,33 @@ def get_saju(year: int, month: int, day: int, hour: int, minute: int = 0,
     기본값(use_solar_time=False)은 1-11에서 sajuinfo.co.kr과 대조 검증한 상태와 동일함.
     태양시 보정을 쓰고 싶으면 use_solar_time=True와 city를 명시적으로 넘겨야 함
     (단, 자시/야자시 경계에서 결과가 달라질 수 있으므로 별도 검증 필요).
+
+    hour=None이면 "생시를 모른다"는 뜻으로 간주함. 이 경우 sajupy 계산 자체는
+    정오(12:00)를 임시값으로 넣어 진행하되, 반환 딕셔너리에 hour_known=False를
+    표시해서, 이 값을 소비하는 후속 함수(format_saju_summary,
+    get_element_distribution, get_ten_gods_summary 등)가 시주 관련 정보를
+    결과에서 제외하도록 함.
+    ※ hour가 정상적으로 주어진 경우(hour_known=True)의 계산 경로는 이전과
+      완전히 동일함 — 이미 검증된 로직이므로 이 분기는 절대 건드리지 않음.
     """
-    kwargs = dict(year=year, month=month, day=day, hour=hour, minute=minute)
+    hour_known = hour is not None
+    actual_hour = hour if hour_known else 12
+    actual_minute = minute if hour_known else 0
+
+    kwargs = dict(year=year, month=month, day=day, hour=actual_hour, minute=actual_minute)
     if use_solar_time:
         kwargs.update(city=city, use_solar_time=True, utc_offset=utc_offset)
-    return calculate_saju(**kwargs)
+
+    result = calculate_saju(**kwargs)
+    result["hour_known"] = hour_known
+    return result
 
 
-def get_saju_from_lunar(lunar_year: int, lunar_month: int, lunar_day: int, hour: int,
+def get_saju_from_lunar(lunar_year: int, lunar_month: int, lunar_day: int, hour: int = None,
                           minute: int = 0, is_leap_month: bool = False, **kwargs) -> dict:
     """
     음력 생년월일시를 받아 양력으로 변환한 뒤 사주를 계산.
+    hour=None(생시 모름) 처리는 get_saju()에 그대로 위임됨.
     """
     converted = lunar_to_solar(lunar_year, lunar_month, lunar_day, is_leap_month)
     return get_saju(converted["solar_year"], converted["solar_month"], converted["solar_day"],
@@ -91,13 +106,18 @@ def get_saju_from_lunar(lunar_year: int, lunar_month: int, lunar_day: int, hour:
 def format_saju_summary(saju: dict) -> str:
     """
     사주 계산 결과를 LLM 프롬프트에 넣기 좋은 텍스트로 정리.
+    hour_known=False(생시 미상)면 시주 줄을 "정보 없음"으로 대체.
     """
-    return (
-        f"년주: {saju['year_pillar']} ({saju['year_stem']}{saju['year_branch']})\n"
-        f"월주: {saju['month_pillar']} ({saju['month_stem']}{saju['month_branch']})\n"
-        f"일주: {saju['day_pillar']} ({saju['day_stem']}{saju['day_branch']})\n"
-        f"시주: {saju['hour_pillar']} ({saju['hour_stem']}{saju['hour_branch']})"
-    )
+    lines = [
+        f"년주: {saju['year_pillar']} ({saju['year_stem']}{saju['year_branch']})",
+        f"월주: {saju['month_pillar']} ({saju['month_stem']}{saju['month_branch']})",
+        f"일주: {saju['day_pillar']} ({saju['day_stem']}{saju['day_branch']})",
+    ]
+    if saju.get("hour_known", True):
+        lines.append(f"시주: {saju['hour_pillar']} ({saju['hour_stem']}{saju['hour_branch']})")
+    else:
+        lines.append("시주: 정보 없음 (생시 미상)")
+    return "\n".join(lines)
 
 
 # ── 오행(五行) 기본 데이터 ──────────────────────────────────────
@@ -264,8 +284,13 @@ def get_element_distribution(saju: dict) -> dict:
     day_element = STEM_TO_ELEMENT[day_stem]
     month_branch = saju["month_branch"]
 
-    stems = [saju["year_stem"], saju["month_stem"], saju["day_stem"], saju["hour_stem"]]
-    branches = [saju["year_branch"], saju["month_branch"], saju["day_branch"], saju["hour_branch"]]
+    hour_known = saju.get("hour_known", True)
+
+    stems = [saju["year_stem"], saju["month_stem"], saju["day_stem"]]
+    branches = [saju["year_branch"], saju["month_branch"], saju["day_branch"]]
+    if hour_known:
+        stems.append(saju["hour_stem"])
+        branches.append(saju["hour_branch"])
 
     # 천간: 통근/월령 보정 대상 아님, 기본 1.0 그대로
     for stem in stems:
@@ -474,6 +499,7 @@ def get_ten_gods_summary(saju: dict) -> dict:
     """
     사주 전체(일간을 제외한 년/월/시간 천간 + 년/월/일/시지)에 대해
     십성을 계산해서 반환.
+    hour_known=False(생시 미상)면 "시간"/"시지" 항목 자체를 결과에서 제외함.
     - 지지의 십성은 해당 지지의 지장간 중 정기(주된 기운)를 기준으로 계산
       (일반적인 만세력 서비스들의 표기 방식과 동일).
     ※ 2장 전면 재검토 당시 이 방식을 다시 검토했으나, 초기/중기까지
@@ -482,17 +508,22 @@ def get_ten_gods_summary(saju: dict) -> dict:
       현행(정기만 사용) 유지로 결정함.
     """
     day_stem = saju["day_stem"]
+    hour_known = saju.get("hour_known", True)
     result = {}
 
-    for label, stem in [("년간", saju["year_stem"]),
-                         ("월간", saju["month_stem"]),
-                         ("시간", saju["hour_stem"])]:
+    stem_targets = [("년간", saju["year_stem"]), ("월간", saju["month_stem"])]
+    if hour_known:
+        stem_targets.append(("시간", saju["hour_stem"]))
+
+    branch_targets = [("년지", saju["year_branch"]), ("월지", saju["month_branch"]),
+                       ("일지", saju["day_branch"])]
+    if hour_known:
+        branch_targets.append(("시지", saju["hour_branch"]))
+
+    for label, stem in stem_targets:
         result[label] = get_ten_god(day_stem, stem)
 
-    for label, branch in [("년지", saju["year_branch"]),
-                           ("월지", saju["month_branch"]),
-                           ("일지", saju["day_branch"]),
-                           ("시지", saju["hour_branch"])]:
+    for label, branch in branch_targets:
         main_qi_stem = HIDDEN_STEMS[branch][-1][0]  # 지장간 중 정기(마지막 항목)
         result[label] = get_ten_god(day_stem, main_qi_stem)
 

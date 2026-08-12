@@ -126,7 +126,8 @@ SYSTEM_PROMPT = """당신은 사주 명리학에 정통하면서도, 사주를 �
 def build_user_prompt(saju_summary: str, today_str: str, today_iljin: str,
                        lucky_info: str, gender: str = None,
                        strength: str = None, ten_gods_summary: str = None,
-                       ten_gods_distribution: str = None) -> str:
+                       ten_gods_distribution: str = None,
+                       hour_known: bool = True) -> str:
     """
     사용자 사주 요약, 오늘 날짜, 오늘의 일진, 행운 컬러/방향/소재, (선택) 성별을
     받아서 실제 LLM에 보낼 유저 프롬프트를 조립.
@@ -141,12 +142,26 @@ def build_user_prompt(saju_summary: str, today_str: str, today_iljin: str,
         ten_gods_summary: 십성 요약 (saju/calculator.py의 format_ten_gods_summary())
         ten_gods_distribution: 십성 세력 분포 요약
                                 (saju/calculator.py의 get_ten_gods_distribution_summary())
+        hour_known: 생시(태어난 시각)를 아는지 여부. False면 saju_summary·
+                     ten_gods_summary에 이미 시주/시간/시지 항목이 빠져있는
+                     상태이므로, LLM이 이를 임의로 추측하거나 언급하지
+                     않도록 안내 문구를 추가로 넣음.
+                     hour_known=True(기본값)일 때는 기존과 완전히 동일한
+                     프롬프트가 생성됨 — 이 분기가 추가되기 전과 바이트
+                     단위로 동일.
     """
     gender_line = f"[성별]\n{gender}\n\n" if gender else ""
     strength_line = f"[기운의 강약]\n{strength} (일간의 기운이 {'강한' if strength == '신강' else '약한'} 편)\n\n" if strength else ""
     ten_gods_line = f"[십성 관계]\n{ten_gods_summary}\n\n" if ten_gods_summary else ""
     distribution_line = f"[십성 세력 분포]\n{ten_gods_distribution}\n\n" if ten_gods_distribution else ""
-
+    hour_unknown_note = (
+        "[참고]\n"
+        "이 사용자는 태어난 시각을 모릅니다. 그래서 위 사주 정보에는 시주가\n"
+        "포함되어 있지 않고, 십성 관계에도 시간·시지 항목이 없습니다. 시주나\n"
+        "태어난 시각에 대해 추측하거나 언급하지 마세요. 9개 항목은 그대로 모두\n"
+        "작성하되, 시주가 없다는 사실 자체를 굳이 강조하지 말고 자연스럽게\n"
+        "년주·월주·일주 정보만으로 해석해주세요.\n\n"
+    ) if not hour_known else ""
 
     return f"""아래는 사용자의 사주 정보와 오늘의 일진, 행운 정보입니다.
 (이 값들은 이미 정확히 계산된 데이터이며, 아래 정보에 나온 한자나 전문 용어를
@@ -157,7 +172,7 @@ def build_user_prompt(saju_summary: str, today_str: str, today_iljin: str,
 [사용자 사주]
 {saju_summary}
 
-{gender_line}{strength_line}{ten_gods_line}{distribution_line}[오늘 날짜]
+{hour_unknown_note}{gender_line}{strength_line}{ten_gods_line}{distribution_line}[오늘 날짜]
 {today_str}
 
 [오늘의 일진]

@@ -71,7 +71,7 @@ class FortuneRequest(BaseModel):
     year: int
     month: int
     day: int
-    hour: int
+    hour: Optional[int] = None   # None이면 "생시 모름"으로 처리
     minute: int = 0
     gender: str          # "남성" 또는 "여성"
     region_1: str   # 시/도
@@ -83,7 +83,7 @@ class SubscribeRequest(BaseModel):
     year: int
     month: int
     day: int
-    hour: int
+    hour: Optional[int] = None   # None이면 "생시 모름" — 8-2-1 마이그레이션으로 DB도 허용됨
     minute: int = 0
     gender: str
     region_1: str   # 시/도 (예: "서울특별시")
@@ -108,6 +108,8 @@ class ResendLinkRequest(BaseModel):
 
 @app.post("/fortune/preview")
 def fortune_preview(req: FortuneRequest):
+    # req.hour가 None이어도 get_saju()/get_saju_from_lunar()가 내부적으로
+    # hour_known=False 분기를 타므로, 이 엔드포인트 코드 자체는 변경 없음.
     if req.calendar_type == "음력":
         saju = get_saju_from_lunar(req.year, req.month, req.day, req.hour, req.minute)
     else:
@@ -209,6 +211,11 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
     if not subscriber:
         raise HTTPException(status_code=404, detail="유효하지 않은 링크입니다.")
 
+    # fields_set: 요청 body에 실제로 포함된 필드 이름 집합.
+    # hour만 예외적으로 "포함됐으면 None이어도 반영"(생시모름 전환 허용),
+    # 나머지 필드는 기존처럼 "값이 있을 때만 반영" 유지.
+    fields_set = req.model_fields_set
+
     if req.calendar_type is not None:
         subscriber.calendar_type = req.calendar_type
     if req.year is not None:
@@ -217,8 +224,8 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
         subscriber.birth_month = req.month
     if req.day is not None:
         subscriber.birth_day = req.day
-    if req.hour is not None:
-        subscriber.birth_hour = req.hour
+    if "hour" in fields_set:
+        subscriber.birth_hour = req.hour  # None이면 생시모름으로 명시 전환
     if req.minute is not None:
         subscriber.birth_minute = req.minute
     if req.gender is not None:
@@ -235,6 +242,12 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
 
     manage_link = f"{os.getenv('BASE_URL')}/manage/{token}"
 
+    birth_time_text = (
+        f"{subscriber.birth_hour:02d}:{subscriber.birth_minute:02d}"
+        if subscriber.birth_hour is not None
+        else "모름"
+    )
+
     send_email(
         to_email=subscriber.email,
         subject="[Kiwoon] 정보가 수정되었습니다",
@@ -243,7 +256,7 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
             title="정보가 수정되었어요",
             message_lines=[
                 f"생년월일: {subscriber.calendar_type} {subscriber.birth_year}-{subscriber.birth_month:02d}-{subscriber.birth_day:02d}",
-                f"태어난 시간: {subscriber.birth_hour:02d}:{subscriber.birth_minute:02d} · 성별: {subscriber.gender}",
+                f"태어난 시간: {birth_time_text} · 성별: {subscriber.gender}",
                 f"날씨 지역: {subscriber.region_1} {subscriber.region_2}",
                 f"알림 시간: {subscriber.notify_time} · 알림 상태: {'켜짐' if subscriber.notify_enabled else '꺼짐'}",
             ],

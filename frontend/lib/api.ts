@@ -11,7 +11,7 @@ export type FortuneRequest = {
   year: number;
   month: number;
   day: number;
-  hour: number;
+  hour: number | null;   // null이면 "생시 모름" — 백엔드 FortuneRequest.hour(Optional[int])와 일치
   minute: number;
   gender: string;
   region_1: string;
@@ -31,7 +31,7 @@ export type UpdateSubscriberRequest = Partial<{
   year: number;
   month: number;
   day: number;
-  hour: number;
+  hour: number | null;
   minute: number;
   gender: string;
   region_1: string;

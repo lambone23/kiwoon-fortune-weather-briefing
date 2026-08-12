@@ -37,6 +37,8 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
                       gender: str = None) -> str:
     """
     사주 정보를 받아서 오늘의 운세 해석 텍스트를 생성.
+    saju에 hour_known=False가 포함돼 있으면(생시 미상), LLM에게 시주 기반
+    해석을 시도하지 말라는 지시를 프롬프트에 함께 전달함.
 
     Args:
         saju: saju/calculator.py의 get_saju() 결과 (사주 딕셔너리 전체)
@@ -52,7 +54,9 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
     today_str = today.strftime("%Y-%m-%d")
     today_iljin = get_today_iljin(today)
 
-    lucky = get_lucky_info(saju)  # ← 변경: day_stem 대신 saju 전체를 넘김
+    hour_known = saju.get("hour_known", True)
+
+    lucky = get_lucky_info(saju)
     lucky_info = format_lucky_info(lucky)
 
     strength = get_day_master_strength(saju)
@@ -68,6 +72,7 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
                 saju_summary, today_str, today_iljin, lucky_info, gender,
                 strength=strength, ten_gods_summary=ten_gods_summary,
                 ten_gods_distribution=ten_gods_distribution,
+                hour_known=hour_known,
             )},
         ],
     )

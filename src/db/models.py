@@ -20,7 +20,7 @@ class Subscriber(Base):
     birth_year = Column(Integer, nullable=False)
     birth_month = Column(Integer, nullable=False)
     birth_day = Column(Integer, nullable=False)
-    birth_hour = Column(Integer, nullable=False)
+    birth_hour = Column(Integer, nullable=True)  # None이면 생시 모름 (calculator.py hour_known=False와 동일 개념)
     birth_minute = Column(Integer, default=0)
     gender = Column(String, nullable=False)          # "남성" 또는 "여성"
 
