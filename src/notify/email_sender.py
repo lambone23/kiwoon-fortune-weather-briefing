@@ -53,53 +53,54 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str = Non
         server.send_message(msg)
 
 def build_notification_email(
-    icon: str,
     title: str,
     message_lines: list[str],
-    manage_link: str,
-    accent_color: str = "#4a90d9",
+    manage_link: str = None,
+    accent_color: str = "#3D4B6E",
 ) -> str:
     """
-    카드형 알림 메일 공통 템플릿.
-    daily_job.py의 브리핑 메일과 동일한 다크 톤(#3a3a37 배경, #4d4c48 카드)을 재사용.
-    - icon, title: 카드 헤더에 표시 (예: "✅", "신청이 완료되었습니다")
-    - message_lines: 본문에 순서대로 나열할 안내 문장들
-    - manage_link: 항상 포함 — 모든 알림 메일에서 관리 페이지로 바로 이동 가능하게 함
-    - accent_color: 헤더 색상 (기본은 날씨 카드와 동일한 파랑, 상황에 따라 다르게 지정 가능)
+    카드형 알림 메일 공통 템플릿. 챕터11에서 확정한 화이트+인디고 톤 반영.
+    - 다크모드 메타태그 제거 (라이트 테마 고정, 사용자 메일앱 다크모드에 따른
+      의도치 않은 색 반전 방지).
+    - icon 파라미터 제거 (로고·이모지 전면 배제 결정에 따라 더 이상 쓰이지 않음).
+    - manage_link가 없으면(탈퇴 완료 등 이후 관리할 계정이 없는 경우) 관리
+      링크 문단 자체를 생략.
+    - accent_color는 호출부가 유형별로 지정 (가입완료/정보수정: 인디고,
+      알림On: 초록, 알림Off: 주황, 탈퇴: 빨강 — 12-2-2에서 확정).
     """
     lines_html = "".join(
-        f'<p style="margin:0 0 10px 0; color:#e8e6e0; font-size:14px; line-height:1.6;">{line}</p>'
+        f'<p style="margin:0 0 10px 0; color:#2B2A27; font-size:13px; line-height:1.6;">{line}</p>'
         for line in message_lines
     )
 
+    manage_html = (
+        f'''<p style="margin:16px 0 0 0; font-size:11px; color:#8A8578; line-height:1.6;">
+            관리 링크는 본인 확인용 비밀 링크예요. 다른 사람에게 공유하지 마세요.<br>
+            <a href="{manage_link}" style="color:#3D4B6E;">내 정보 관리하기</a>
+        </p>'''
+        if manage_link else ""
+    )
+
     return f"""
-    <meta name="color-scheme" content="dark light">
-    <meta name="supported-color-schemes" content="dark light">
-    <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; max-width:480px; margin:0 auto;">
-        <div style="background-color:#3a3a37; padding:24px 16px; border-radius:14px;">
+    <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; max-width:420px; margin:0 auto; background-color:#FAF9F6; padding:20px; border-radius:14px;">
 
-            <div style="text-align:center; margin-bottom:20px;">
-                <span style="font-size:20px; font-weight:700; color:#f5f3ee;">🌤️ KI WOON 기운 🔮</span>
+        <p style="text-align:center; font-size:16px; font-weight:500; color:#2B2A27; margin:0 0 4px;">KI WOON 기운</p>
+        <p style="text-align:center; font-size:11px; color:#8A8578; margin:0 0 18px;">오늘의 운세와 날씨를 전하는 브리핑 서비스</p>
+
+        <div style="background-color:#FFFFFF; border:0.5px solid #E4E1D8; border-radius:12px; overflow:hidden;">
+            <div style="background-color:{accent_color}; padding:12px 16px;">
+                <span style="font-size:14px; font-weight:500; color:#FFFFFF;">{title}</span>
             </div>
-
-            <div style="border:1px solid #5a5955; border-radius:12px; overflow:hidden;">
-                <div style="background-color:{accent_color}; padding:14px 16px;">
-                    <span style="font-size:15px; font-weight:600; color:#ffffff;">{icon} {title}</span>
-                </div>
-                <div style="background-color:#4d4c48; padding:18px 16px;">
-                    {lines_html}
-                    <p style="margin:16px 0 0 0; font-size:12px; color:#8a8883; line-height:1.6;">
-                        🔒 관리 링크는 본인 확인용 비밀 링크예요. 다른 사람에게 공유하지 마세요.<br>
-                        <a href="{manage_link}" style="color:#9ec5e8;">내 정보 관리하기</a>
-                    </p>
-                </div>
+            <div style="background-color:#FFFFFF; padding:16px;">
+                {lines_html}
+                {manage_html}
             </div>
-
-            <p style="text-align:center; font-size:11px; color:#6a6965; margin-top:20px;">
-                문의: lambone234567@gmail.com<br>
-                © 2026 Kiwoon. All rights reserved.
-            </p>
         </div>
+
+        <p style="text-align:center; font-size:10px; color:#B5B2A8; margin-top:16px;">
+            문의 : lambone234567@gmail.com<br>
+            © 2026 Kiwoon. All rights reserved.
+        </p>
     </div>
     """
 
