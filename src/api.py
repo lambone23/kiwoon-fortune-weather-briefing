@@ -4,6 +4,8 @@ FastAPI 서버 진입점.
 - calculator.py, prompts.py, fortune_generator.py는 수정 없이 그대로 재사용.
 """
 
+import email
+
 from fastapi.middleware.cors import CORSMiddleware
 
 import os
@@ -163,14 +165,13 @@ def subscribe(req: SubscribeRequest, db: Session = Depends(get_db)):
             to_email=req.email,
             subject="[Kiwoon] 오늘의 운세 알림 신청이 완료되었습니다",
             html_body=build_notification_email(
-                icon="✅",
-                title="신청이 완료되었어요",
+                title="신청이 완료됐어요",
                 message_lines=[
                     f"매일 <b>{req.notify_time}</b>에 오늘의 운세 브리핑을 보내드릴게요.",
-                    f"날씨 지역: {req.region_1} {req.region_2}",
+                    f"날씨 지역 : {req.region_1} {req.region_2}",
                 ],
                 manage_link=manage_link,
-                accent_color="#3aa66b",   # 완료 화면의 초록과 동일 톤
+                accent_color="#3D4B6E",   # 챕터11 결정 — 가입완료/정보수정: 인디고
             ),
         )
     # ── email 관련 End ──
@@ -252,16 +253,10 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
         to_email=subscriber.email,
         subject="[Kiwoon] 정보가 수정되었습니다",
         html_body=build_notification_email(
-            icon="✏️",
             title="정보가 수정되었어요",
-            message_lines=[
-                f"생년월일: {subscriber.calendar_type} {subscriber.birth_year}-{subscriber.birth_month:02d}-{subscriber.birth_day:02d}",
-                f"태어난 시간: {birth_time_text} · 성별: {subscriber.gender}",
-                f"날씨 지역: {subscriber.region_1} {subscriber.region_2}",
-                f"알림 시간: {subscriber.notify_time} · 알림 상태: {'켜짐' if subscriber.notify_enabled else '꺼짐'}",
-            ],
+            message_lines=[...],
             manage_link=manage_link,
-            accent_color="#4a90d9",
+            accent_color="#3D4B6E",   # 챕터11 결정 — 인디고
         ),
     )
 
@@ -298,14 +293,11 @@ def toggle_notify(token: str, db: Session = Depends(get_db)):
         to_email=subscriber.email,
         subject=f"[Kiwoon] 알림이 {status_text}으로 변경되었습니다",
         html_body=build_notification_email(
-            icon="🔔" if subscriber.notify_enabled else "🔕",
             title=f"알림이 {status_text}으로 변경되었어요",
-            message_lines=[
-                f"매일 {subscriber.notify_time}에 브리핑을 받아보실 수 있어요." if subscriber.notify_enabled
-                else "알림이 꺼져서 더 이상 브리핑 메일이 가지 않아요.",
-            ],
+            message_lines=[...],
             manage_link=manage_link,
-            accent_color="#3aa66b" if subscriber.notify_enabled else "#c99a5a",
+            accent_color="#5C8A6B" if subscriber.notify_enabled else "#CC9530",
+            # 챕터11 결정 — On: 초록 / Off: 주황
         ),
     )
 
@@ -350,34 +342,16 @@ def delete_subscriber(token: str, db: Session = Depends(get_db)):
     send_email(
         to_email=email,
         subject="[Kiwoon] 탈퇴가 완료되었습니다",
-        html_body=f"""
-        <meta name="color-scheme" content="dark light">
-        <meta name="supported-color-schemes" content="dark light">
-        <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; max-width:480px; margin:0 auto;">
-            <div style="background-color:#3a3a37; padding:24px 16px; border-radius:14px;">
-                <div style="text-align:center; margin-bottom:20px;">
-                    <span style="font-size:20px; font-weight:700; color:#f5f3ee;">🌤️ KI WOON 기운 🔮</span>
-                </div>
-                <div style="border:1px solid #5a5955; border-radius:12px; overflow:hidden;">
-                    <div style="background-color:#8a4a4a; padding:14px 16px;">
-                        <span style="font-size:15px; font-weight:600; color:#ffffff;">👋 탈퇴가 완료되었어요</span>
-                    </div>
-                    <div style="background-color:#4d4c48; padding:18px 16px;">
-                        <p style="margin:0; color:#e8e6e0; font-size:14px; line-height:1.6;">
-                            요청하신 대로 탈퇴 처리가 완료되어, 등록하신 모든 정보가 삭제되었습니다.
-                        </p>
-                        <p style="margin:10px 0 0 0; color:#e8e6e0; font-size:14px; line-height:1.6;">
-                            다시 이용하고 싶으시면 언제든 새로 신청해주세요.
-                        </p>
-                    </div>
-                </div>
-                <p style="text-align:center; font-size:11px; color:#6a6965; margin-top:20px;">
-                    문의: lambone234567@gmail.com<br>
-                    © 2026 Kiwoon. All rights reserved.
-                </p>
-            </div>
-        </div>
-        """,
+        html_body=build_notification_email(
+            title="탈퇴가 완료됐어요",
+            message_lines=[
+                "요청하신 대로 탈퇴 처리가 완료됐어요.",
+                "등록하신 모든 정보가 삭제되었습니다.",
+                "다시 이용하고 싶으시면 언제든 새로 신청해주세요.",
+            ],
+            manage_link=None,   # 계정이 삭제되어 더 이상 관리 링크 불필요
+            accent_color="#B5615A",   # 챕터11 결정 — 탈퇴: 빨강 (웹 color.danger와 동일)
+        ),
     )
 
     return {"message": "탈퇴가 완료되었습니다. 그동안 이용해주셔서 감사합니다."}
