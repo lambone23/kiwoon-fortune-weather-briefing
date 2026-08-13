@@ -1,7 +1,6 @@
 """
 FastAPI 서버 진입점.
-- main.py와 동일한 로직(계산→해석)을 웹 요청(JSON)으로 처리.
-- calculator.py, prompts.py, fortune_generator.py는 수정 없이 그대로 재사용.
+...
 """
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,12 +23,9 @@ from src.llm.fortune_generator import generate_fortune
 
 from typing import Optional
 
-from apscheduler.schedulers.background import BackgroundScheduler
 from src.scheduler.daily_job import send_daily_fortunes
 
 app = FastAPI()
-
-FRONTEND_ORIGINS = os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(",")
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,8 +35,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(send_daily_fortunes, "cron", minute="*")
+# 스케줄러(APScheduler) → 외부 Cron(cron-job.org) 전환.
+# Render Free 플랜은 비활성 시 인스턴스가 슬립 상태로 들어가는데, 슬립 중엔
+# 프로세스 내부 스케줄러도 함께 멈춰서 발송 시각을 놓칠 수 있음(챕터4-1).
+# 이제 외부에서 이 엔드포인트를 매 분 호출하는 방식으로 대체.
+CRON_SECRET = os.getenv("CRON_SECRET")
+
+@app.post("/cron/send-fortunes")
+def cron_send_fortunes(secret: str):
+    if secret != CRON_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    send_daily_fortunes()
+    return {"message": "실행 완료"}
 
 @app.get("/regions")
 def get_regions():
@@ -49,17 +55,6 @@ def get_regions():
 @app.get("/regions/{region_1}")
 def get_sub_regions(region_1: str):
     return {"region_2_list": get_region_2_list(region_1)}
-
-@app.on_event("startup")
-def start_scheduler():
-    scheduler.start()
-    print("[스케줄러] 시작됨 — 매 분마다 발송 대상 확인")
-
-
-@app.on_event("shutdown")
-def stop_scheduler():
-    scheduler.shutdown()
-    print("[스케줄러] 종료됨")
 
 def get_db():
     db = SessionLocal()
