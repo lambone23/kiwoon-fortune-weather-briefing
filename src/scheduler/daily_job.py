@@ -15,6 +15,9 @@ from src.saju.calculator import get_saju, get_saju_from_lunar, format_saju_summa
 from src.llm.fortune_generator import generate_fortune
 from src.notify.email_sender import send_email
 from src.weather.weather_fetcher import get_weather_by_region, format_weather_summary
+from zoneinfo import ZoneInfo
+
+KST = ZoneInfo("Asia/Seoul")
 
 FORTUNE_LABELS = ["총운", "재물운", "학업운", "직업운", "건강운", "연애운",
                   "행운 컬러", "행운 소재", "행운 방향"]
@@ -194,7 +197,7 @@ def get_due_subscribers(db: Session) -> list[Subscriber]:
     Returns:
         list[Subscriber]: 지금 발송 대상인 구독자 리스트
     """
-    now = datetime.now()
+    now = datetime.now(KST)
     current_time_str = now.strftime("%H:%M")
 
     subscribers = db.query(Subscriber).filter(
