@@ -4,8 +4,6 @@ FastAPI 서버 진입점.
 - calculator.py, prompts.py, fortune_generator.py는 수정 없이 그대로 재사용.
 """
 
-import email
-
 from fastapi.middleware.cors import CORSMiddleware
 
 import os
@@ -69,15 +67,15 @@ def get_db():
         db.close()
 
 class FortuneRequest(BaseModel):
-    calendar_type: str   # "양력" 또는 "음력"
+    calendar_type: str
     year: int
     month: int
     day: int
-    hour: Optional[int] = None   # None이면 "생시 모름"으로 처리
+    hour: Optional[int] = None
     minute: int = 0
-    gender: str          # "남성" 또는 "여성"
-    region_1: str   # 시/도
-    region_2: str   # 구/군
+    gender: str
+    region_1: str
+    region_2: str
 
 class SubscribeRequest(BaseModel):
     email: str
@@ -85,13 +83,13 @@ class SubscribeRequest(BaseModel):
     year: int
     month: int
     day: int
-    hour: Optional[int] = None   # None이면 "생시 모름" — 8-2-1 마이그레이션으로 DB도 허용됨
+    hour: Optional[int] = None
     minute: int = 0
     gender: str
-    region_1: str   # 시/도 (예: "서울특별시")
-    region_2: str   # 구/군 (예: "강남구")
-    notify_time: str   # 예: "07:30"
-    notify_enabled: bool = True   # 기본값 True (안 보내면 알림 받는 걸로 간주)
+    region_1: str
+    region_2: str
+    notify_time: str
+    notify_enabled: bool = True
 
 class UpdateSubscriberRequest(BaseModel):
     calendar_type: Optional[str] = None
@@ -110,8 +108,6 @@ class ResendLinkRequest(BaseModel):
 
 @app.post("/fortune/preview")
 def fortune_preview(req: FortuneRequest):
-    # req.hour가 None이어도 get_saju()/get_saju_from_lunar()가 내부적으로
-    # hour_known=False 분기를 타므로, 이 엔드포인트 코드 자체는 변경 없음.
     if req.calendar_type == "음력":
         saju = get_saju_from_lunar(req.year, req.month, req.day, req.hour, req.minute)
     else:
@@ -149,7 +145,7 @@ def subscribe(req: SubscribeRequest, db: Session = Depends(get_db)):
         region_1=req.region_1,
         region_2=req.region_2,
         notify_time=req.notify_time,
-        notify_enabled=req.notify_enabled, # 변경: 고정값 True 대신 사용자 선택값
+        notify_enabled=req.notify_enabled,
         manage_token=manage_token,
     )
 
@@ -157,10 +153,9 @@ def subscribe(req: SubscribeRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_subscriber)
 
-    # ── email 관련 Start ──
     manage_link = f"{os.getenv('BASE_URL')}/manage/{manage_token}"
 
-    if req.notify_enabled:   # 알림 켠 경우에만 메일 발송
+    if req.notify_enabled:
         send_email(
             to_email=req.email,
             subject="[Kiwoon] 오늘의 운세 알림 신청이 완료되었습니다",
@@ -171,10 +166,9 @@ def subscribe(req: SubscribeRequest, db: Session = Depends(get_db)):
                     f"날씨 지역 : {req.region_1} {req.region_2}",
                 ],
                 manage_link=manage_link,
-                accent_color="#3D4B6E",   # 챕터11 결정 — 가입완료/정보수정: 인디고
+                accent_color="#3D4B6E",
             ),
         )
-    # ── email 관련 End ──
 
     return {
         "message": (
@@ -201,7 +195,7 @@ def get_subscriber_info(token: str, db: Session = Depends(get_db)):
         "birth_minute": subscriber.birth_minute,
         "gender": subscriber.gender,
         "region_1": subscriber.region_1,
-        "region_2": subscriber.region_2,        
+        "region_2": subscriber.region_2,
         "notify_time": subscriber.notify_time,
         "notify_enabled": subscriber.notify_enabled,
     }
@@ -212,9 +206,6 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
     if not subscriber:
         raise HTTPException(status_code=404, detail="유효하지 않은 링크입니다.")
 
-    # fields_set: 요청 body에 실제로 포함된 필드 이름 집합.
-    # hour만 예외적으로 "포함됐으면 None이어도 반영"(생시모름 전환 허용),
-    # 나머지 필드는 기존처럼 "값이 있을 때만 반영" 유지.
     fields_set = req.model_fields_set
 
     if req.calendar_type is not None:
@@ -226,7 +217,7 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
     if req.day is not None:
         subscriber.birth_day = req.day
     if "hour" in fields_set:
-        subscriber.birth_hour = req.hour  # None이면 생시모름으로 명시 전환
+        subscriber.birth_hour = req.hour
     if req.minute is not None:
         subscriber.birth_minute = req.minute
     if req.gender is not None:
@@ -234,7 +225,7 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
     if req.region_1 is not None:
         subscriber.region_1 = req.region_1
     if req.region_2 is not None:
-        subscriber.region_2 = req.region_2        
+        subscriber.region_2 = req.region_2
     if req.notify_time is not None:
         subscriber.notify_time = req.notify_time
 
@@ -254,9 +245,14 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
         subject="[Kiwoon] 정보가 수정되었습니다",
         html_body=build_notification_email(
             title="정보가 수정되었어요",
-            message_lines=[...],
+            message_lines=[
+                f"생년월일 : {subscriber.calendar_type} {subscriber.birth_year}-{subscriber.birth_month:02d}-{subscriber.birth_day:02d}",
+                f"태어난 시간 : {birth_time_text} · 성별 : {subscriber.gender}",
+                f"날씨 지역 : {subscriber.region_1} {subscriber.region_2}",
+                f"알림 시간 : {subscriber.notify_time} · 알림 상태 : {'켜짐' if subscriber.notify_enabled else '꺼짐'}",
+            ],
             manage_link=manage_link,
-            accent_color="#3D4B6E",   # 챕터11 결정 — 인디고
+            accent_color="#3D4B6E",
         ),
     )
 
@@ -271,7 +267,7 @@ def update_subscriber_info(token: str, req: UpdateSubscriberRequest, db: Session
         "birth_minute": subscriber.birth_minute,
         "gender": subscriber.gender,
         "region_1": subscriber.region_1,
-        "region_2": subscriber.region_2,        
+        "region_2": subscriber.region_2,
         "notify_time": subscriber.notify_time,
         "notify_enabled": subscriber.notify_enabled,
     }
@@ -294,10 +290,12 @@ def toggle_notify(token: str, db: Session = Depends(get_db)):
         subject=f"[Kiwoon] 알림이 {status_text}으로 변경되었습니다",
         html_body=build_notification_email(
             title=f"알림이 {status_text}으로 변경되었어요",
-            message_lines=[...],
+            message_lines=[
+                f"매일 {subscriber.notify_time}에 브리핑을 받아보실 수 있어요." if subscriber.notify_enabled
+                else "알림이 꺼져서 더 이상 브리핑 메일이 가지 않아요.",
+            ],
             manage_link=manage_link,
             accent_color="#5C8A6B" if subscriber.notify_enabled else "#CC9530",
-            # 챕터11 결정 — On: 초록 / Off: 주황
         ),
     )
 
@@ -349,8 +347,8 @@ def delete_subscriber(token: str, db: Session = Depends(get_db)):
                 "등록하신 모든 정보가 삭제되었습니다.",
                 "다시 이용하고 싶으시면 언제든 새로 신청해주세요.",
             ],
-            manage_link=None,   # 계정이 삭제되어 더 이상 관리 링크 불필요
-            accent_color="#B5615A",   # 챕터11 결정 — 탈퇴: 빨강 (웹 color.danger와 동일)
+            manage_link=None,
+            accent_color="#B5615A",
         ),
     )
 
