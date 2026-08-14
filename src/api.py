@@ -12,7 +12,7 @@ from src.weather.weather_fetcher import get_weather_by_region, format_weather_su
 
 import secrets
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -44,8 +44,8 @@ app.add_middleware(
 CRON_SECRET = os.getenv("CRON_SECRET")
 
 @app.post("/cron/send-fortunes")
-def cron_send_fortunes(secret: str):
-    if secret != CRON_SECRET:
+def cron_send_fortunes(x_cron_secret: str = Header(None)):
+    if x_cron_secret != CRON_SECRET:
         raise HTTPException(status_code=403, detail="Forbidden")
     send_daily_fortunes()
     return {"message": "실행 완료"}
