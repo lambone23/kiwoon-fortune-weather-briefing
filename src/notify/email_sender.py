@@ -1,25 +1,27 @@
 """
 이메일 발송 모듈.
-- Gmail SMTP를 이용해 이메일을 발송.
-- SMTP_EMAIL(발송 계정), SMTP_APP_PASSWORD(앱 비밀번호)는 .env에서 로드.
-- HTML 본문과 순수 텍스트 본문을 함께 보내는 multipart/alternative 구조.
+- Brevo(HTTPS API)를 이용해 이메일을 발송.
+- BREVO_API_KEY(API 키), BREVO_SENDER_EMAIL(인증된 발신자 이메일)은 .env에서 로드.
+- HTML 본문과 순수 텍스트 본문을 함께 보내는 구조.
   이메일 클라이언트가 HTML을 지원하면 카드형 디자인을, 지원 안 하면
   텍스트 버전을 자동으로 보여줌. HTML이 깨지는 경우에도 텍스트 버전이
   안전망 역할을 함.
+
+Part7 챕터5에서 확인된 대로, Render Free 플랜은 SMTP 아웃바운드 포트
+(25/465/587)를 정책적으로 차단하고 있어 smtplib 기반 SMTP 발송이
+근본적으로 불가능함. 이에 따라 HTTPS(443) 기반 Brevo API 호출 방식으로
+전환함 (Part7 챕터6).
 """
 
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-SMTP_EMAIL = os.getenv("SMTP_EMAIL")
-SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD")
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 587
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL")
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 SENDER_DISPLAY_NAME = "Kiwoon"
 
 
@@ -33,24 +35,36 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str = Non
         html_body: 메일 본문 (HTML 형식, 카드형 디자인 등)
         text_body: 메일 본문 (순수 텍스트, HTML 미지원 클라이언트용 대체 버전).
                    생략하면 안내 문구만 담은 단순 버전을 사용.
-    """
-    msg = MIMEMultipart("alternative")
-    msg["From"] = f"{SENDER_DISPLAY_NAME} <{SMTP_EMAIL}>"
-    msg["To"] = to_email
-    msg["Subject"] = subject
 
+    Raises:
+        RuntimeError: Brevo API가 4xx/5xx 응답을 반환한 경우
+                      (requests는 HTTP 에러 상태여도 예외를 자동으로 던지지
+                      않으므로, 호출부의 기존 try/except가 실패를 감지할 수
+                      있도록 여기서 직접 예외를 발생시킴)
+    """
     if text_body is None:
         text_body = "이 메일은 HTML 형식으로 작성되었습니다. HTML을 지원하는 메일 앱에서 확인해주세요."
 
-    # multipart/alternative는 "나중에 추가한 파트"를 우선 표시하는 관례가 있어
-    # 반드시 text를 먼저, html을 나중에 attach함 (HTML 지원 클라이언트가 HTML을 보여주도록)
-    msg.attach(MIMEText(text_body, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
+    payload = {
+        "sender": {"name": SENDER_DISPLAY_NAME, "email": BREVO_SENDER_EMAIL},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": html_body,
+        "textContent": text_body,
+    }
+    headers = {
+        "api-key": BREVO_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.starttls()
-        server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
-        server.send_message(msg)
+    response = requests.post(BREVO_API_URL, json=payload, headers=headers, timeout=15)
+
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"Brevo 이메일 발송 실패: status={response.status_code}, body={response.text}"
+        )
+
 
 def build_notification_email(
     title: str,
@@ -107,8 +121,8 @@ def build_notification_email(
 
 if __name__ == "__main__":
     send_email(
-        to_email="본인이메일주소@example.com",
-        subject="Kiwoon 테스트 메일 (HTML+텍스트)",
+        to_email="yanghana123@naver.com",
+        subject="Kiwoon 테스트 메일 (Brevo API)",
         html_body="<p>이것은 <b>HTML 테스트</b>입니다. <a href='https://google.com'>구글 링크</a></p>",
         text_body="이것은 텍스트 테스트입니다. 구글 링크: https://google.com",
     )
