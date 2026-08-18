@@ -152,10 +152,13 @@ export default function SubscribePage() {
         notify_time: notifyTime,
         notify_enabled: notifyEnabled,
       });
-      setSubscribeResult(result);
 
-      // ② 가입이 성공했을 때만 미리보기(계산+LLM) 실행
+      // ② 가입 성공 후에만 미리보기 실행
       const preview = await fetchFortunePreview(payload);
+
+      // ③ 둘 다 준비된 뒤 한 번에 상태 반영 — isDone이 true가 되는 순간
+      //    weatherInfo/fortuneSections도 함께 준비되어 있어야 빈 화면 없이 전환됨
+      setSubscribeResult(result);
       setWeatherFortune({ weather: preview.weather, fortune: preview.fortune });
     } catch (err: any) {
       setError(err.message);
