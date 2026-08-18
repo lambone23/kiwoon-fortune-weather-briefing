@@ -127,8 +127,26 @@ def fortune_preview(req: FortuneRequest):
 @app.post("/subscribe")
 def subscribe(req: SubscribeRequest, db: Session = Depends(get_db)):
     existing = db.query(Subscriber).filter(Subscriber.email == req.email).first()
+
     if existing:
-        raise HTTPException(status_code=400, detail="이미 등록된 이메일입니다.")
+        manage_link = f"{os.getenv('BASE_URL')}/manage/{existing.manage_token}"
+        send_email(
+            to_email=req.email,
+            subject="[Kiwoon] 관리 링크를 다시 보내드립니다",
+            html_body=build_notification_email(
+                title="이미 가입되어 있어요",
+                message_lines=[
+                    "요청하신 이메일로 이미 가입된 계정이 있어요.",
+                    "관리 링크를 다시 보내드렸으니 확인해주세요.",
+                ],
+                manage_link=manage_link,
+                accent_color="#CC9530",
+            ),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="이미 등록된 이메일입니다.\n관리 링크를 다시 보내드렸으니 메일함을 확인해주세요.",
+        )
 
     manage_token = secrets.token_urlsafe(32)
 
