@@ -143,24 +143,25 @@ export default function SubscribePage() {
       region_2: region2,
     };
 
-  setLoading(true);
-  try {
-    // ① 먼저 가입 처리 시도 — 이미 가입된 이메일이면 여기서 바로 에러
-    const result = await subscribe({
-      ...payload,
-      email,
-      notify_time: notifyTime,
-      notify_enabled: notifyEnabled,
-    });
-    setSubscribeResult(result);
+    setLoading(true);
+    try {
+      // ① 먼저 가입 처리 시도 — 이미 가입된 이메일이면 여기서 바로 에러
+      const result = await subscribe({
+        ...payload,
+        email,
+        notify_time: notifyTime,
+        notify_enabled: notifyEnabled,
+      });
+      setSubscribeResult(result);
 
-    // ② 가입이 성공했을 때만 미리보기(계산+LLM) 실행
-    const preview = await fetchFortunePreview(payload);
-    setWeatherFortune({ weather: preview.weather, fortune: preview.fortune });
-  } catch (err: any) {
-    setError(err.message);
-  } finally {
-    setLoading(false);
+      // ② 가입이 성공했을 때만 미리보기(계산+LLM) 실행
+      const preview = await fetchFortunePreview(payload);
+      setWeatherFortune({ weather: preview.weather, fortune: preview.fortune });
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const fortuneSections = weatherFortune ? parseFortuneSections(weatherFortune.fortune) : null;
