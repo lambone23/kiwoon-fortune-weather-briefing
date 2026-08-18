@@ -64,11 +64,12 @@ function parseWeatherLines(weatherText: string) {
   };
 }
 
-function getTimeBranchLabel(timeBranch: string): string {
+function getTimeBranchLabel(timeBranch: string, withRange: boolean = true): string {
   if (!timeBranch) return "";
   if (timeBranch === TIME_UNKNOWN_VALUE) return "시간 모름";
   const found = JIJI_OPTIONS.find((o) => o.value === timeBranch);
-  return found ? `${found.labelKorean}(${found.range})` : "";
+  if (!found) return "";
+  return withRange ? `${found.labelKorean}(${found.range})` : found.labelKorean;
 }
 
 export default function SubscribePage() {
@@ -142,23 +143,24 @@ export default function SubscribePage() {
       region_2: region2,
     };
 
-    setLoading(true);
-    try {
-      const preview = await fetchFortunePreview(payload);
-      setWeatherFortune({ weather: preview.weather, fortune: preview.fortune });
+  setLoading(true);
+  try {
+    // ① 먼저 가입 처리 시도 — 이미 가입된 이메일이면 여기서 바로 에러
+    const result = await subscribe({
+      ...payload,
+      email,
+      notify_time: notifyTime,
+      notify_enabled: notifyEnabled,
+    });
+    setSubscribeResult(result);
 
-      const result = await subscribe({
-        ...payload,
-        email,
-        notify_time: notifyTime,
-        notify_enabled: notifyEnabled,
-      });
-      setSubscribeResult(result);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    // ② 가입이 성공했을 때만 미리보기(계산+LLM) 실행
+    const preview = await fetchFortunePreview(payload);
+    setWeatherFortune({ weather: preview.weather, fortune: preview.fortune });
+  } catch (err: any) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
   }
 
   const fortuneSections = weatherFortune ? parseFortuneSections(weatherFortune.fortune) : null;
@@ -276,7 +278,11 @@ export default function SubscribePage() {
                     onPendingRegion2Consumed={() => setPendingRegion2("")}
                   />
 
-                  {error && <p style={{ color: color.danger, fontSize: font.size.body }}>{error}</p>}
+                  {error && (
+                    <p style={{ color: color.danger, fontSize: font.size.body, whiteSpace: "pre-line" }}>
+                      {error}
+                    </p>
+                  )}
 
                   <div style={{ display: "flex", gap: spacing.sm }}>
                     <button type="button" onClick={() => router.push("/")} disabled={loading} style={secondaryButtonStyle}>
@@ -384,7 +390,10 @@ export default function SubscribePage() {
                     <span style={tabHeaderTextStyle}>오늘의 운세</span>
                   </div>
                   <span style={tabHeaderSubTextStyle}>
-                    {year}-{String(month).padStart(2, "0")}-{String(day).padStart(2, "0")} {getTimeBranchLabel(timeBranch)}, {gender}
+                    {year}-{String(month).padStart(2, "0")}-{String(day).padStart(2, "0")}{" "}
+                    <span className="time-branch-full">{getTimeBranchLabel(timeBranch, true)}</span>
+                    <span className="time-branch-short">{getTimeBranchLabel(timeBranch, false)}</span>
+                    , {gender}
                   </span>
                 </div>
                 <div style={cardBodyStyle}>

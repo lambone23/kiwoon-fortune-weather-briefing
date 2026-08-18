@@ -33,3 +33,16 @@ body {
     transform: rotate(360deg);
   }
 }
+
+.time-branch-short {
+  display: none;
+}
+
+@media (max-width: 400px) {
+  .time-branch-full {
+    display: none;
+  }
+  .time-branch-short {
+    display: inline;
+  }
+}
