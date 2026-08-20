@@ -22,7 +22,9 @@ client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     base_url=os.getenv("OPENAI_BASE_URL"),
 )
-
+OPENAI_MODEL = os.getenv("OPENAI_MODEL")
+if not OPENAI_MODEL:
+    raise RuntimeError("환경변수 OPENAI_MODEL이 설정되지 않았습니다. .env 또는 Render 환경변수를 확인하세요.")
 
 def get_today_iljin(today: date) -> str:
     """
@@ -65,7 +67,7 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
     ten_gods_distribution = get_ten_gods_distribution_summary(ten_gods_dict)
 
     response = client.chat.completions.create(
-        model="gpt-5-mini",
+        model=OPENAI_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": build_user_prompt(
