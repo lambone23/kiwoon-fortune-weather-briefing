@@ -3,6 +3,16 @@ LLM 호출 로직.
 - prompts.py의 템플릿 + saju/calculator.py의 계산 결과(사용자 사주, 오늘 일진,
   행운 컬러/방향/소재)를 조합해서 OpenAI API(gpt-5-mini)를 호출,
   오늘의 운세 해석 텍스트를 생성.
+
+[고도화 내역 - 3차]
+- get_lucky_info()/format_lucky_info() 대신 get_today_lucky_info()/
+  format_today_lucky_info()를 사용하도록 변경. 원국(saju)뿐 아니라
+  오늘 날짜 기준 사주(today_saju)도 함께 넘겨서, 행운 컬러/방향/소재가
+  오늘의 일진을 반영해 계산되도록 함. 자세한 배경은
+  saju/calculator.py의 [고도화 내역 - 3차] 주석 참고.
+- today_iljin 계산에 쓰던 today_saju 객체를 그대로 재사용해서
+  get_saju() 중복 호출을 피함 (기존에는 get_today_iljin() 내부에서
+  한 번, 필요시 또 한 번 계산될 수 있었음).
 """
 
 import os
@@ -12,7 +22,7 @@ from openai import OpenAI
 
 from src.llm.prompts import SYSTEM_PROMPT, build_user_prompt
 from src.saju.calculator import (
-    get_saju, get_lucky_info, format_lucky_info, get_saju_from_lunar,
+    get_saju, get_today_lucky_info, format_today_lucky_info, get_saju_from_lunar,
     get_day_master_strength, get_ten_gods_summary, format_ten_gods_summary,
     get_ten_gods_distribution_summary,
 )
@@ -54,12 +64,16 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
     if today is None:
         today = date.today()
     today_str = today.strftime("%Y-%m-%d")
-    today_iljin = get_today_iljin(today)
+
+    # 오늘의 일진 계산에 쓰는 사주를 한 번만 계산해서, 일진 표기와
+    # 행운 컬러/방향/소재 계산(get_today_lucky_info) 양쪽에 재사용.
+    today_saju = get_saju(today.year, today.month, today.day, 12, 0)
+    today_iljin = f"{today_saju['day_pillar']} ({today_saju['day_stem']}{today_saju['day_branch']})"
 
     hour_known = saju.get("hour_known", True)
 
-    lucky = get_lucky_info(saju)
-    lucky_info = format_lucky_info(lucky)
+    lucky = get_today_lucky_info(saju, today_saju)
+    lucky_info = format_today_lucky_info(lucky)
 
     strength = get_day_master_strength(saju)
     ten_gods_dict = get_ten_gods_summary(saju)

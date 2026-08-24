@@ -53,6 +53,40 @@
     넷을 동일하게 "토왕"으로만 취급하는 단순화 모델)
   이들은 전체 명식 해석·격국·조후·희기판단 등 선행 체계가 필요한
   영역이라, 단순 함수 추가 수준을 넘어서는 별도 고도화 작업으로 남김.
+
+[고도화 내역 - 3차: 오늘의 행운 컬러/방향/소재를 '오늘의 일진' 반영 구조로 개선]
+- 문제 발견: 기존 get_lucky_info()는 saju(원국)만 인자로 받고 오늘 날짜를
+  전혀 사용하지 않아서, 신강/신약과 용신이 원국만으로 정해지는 이상
+  같은 사람은 날짜와 무관하게 매일 똑같은 행운 컬러/방향/소재가 나오는
+  구조였음. "오늘의 운세" 서비스인데 이 세 항목만 원국 기반 고정값이라
+  실제로는 "타고난 행운 상징"에 가까웠던 문제.
+- 개선 방향: 원국의 용신은 그대로 고정(신강/신약을 매일 다시 판단하지
+  않음)하되, 그 위에 "오늘의 일간 오행이 용신과 어떤 관계인지"를 한 단계
+  더 계산해서 오늘의 행운 오행을 별도로 산출하도록 변경.
+- get_yongsin_today_relation() 추가: 원국의 용신 오행과 오늘의 오행 사이
+  관계를 강화/생조/설기/극제/통제 5가지로 분류 (5개 오행을 빠짐없이
+  겹치지 않게 분류하는 관계).
+- get_today_lucky_element() 추가: 위 관계에 따라 오늘의 행운 오행을
+  결정. 강화·생조·통제는 용신 그대로 유지, 설기는 용신을 생해주는
+  오행으로 보충, 극제는 공격 오행을 억눌러주는 오행으로 방어.
+- get_today_lucky_info() / format_today_lucky_info() 추가: 위 계산
+  결과를 기존 ELEMENT_LUCKY_INFO 매핑에 연결해 컬러/소재/방향만 반환
+  (오행 이름이나 판단 근거는 LLM에 노출하지 않음 — LLM이 결과를
+  재해석하거나 다른 값을 임의로 제안하지 못하도록, 애초에 판단에 쓰인
+  근거 자체를 전달하지 않는 방식으로 방지).
+- 기존 get_lucky_info() / format_lucky_info()는 삭제하지 않고 유지함
+  (원국 자체의 고정된 성향을 별도로 보여줄 필요가 생길 경우 재사용 가능).
+※ 이번 3차에서도 아래는 미반영 (TODO, 향후 검토 대상):
+  - 오늘의 오행 판단 시 현재는 오늘의 "일간"만 사용. 일지의 지장간까지
+    포함해 가중 평균 내는 방식은 검토했으나, 우선 일간만으로 1차
+    구현하고 실제 데이터를 일정 기간 축적해 결과가 너무 안 바뀌거나
+    반대로 너무 자주 바뀌는지 확인한 뒤, 필요 시 일지까지 확장하는
+    2단계로 진행하기로 함.
+  - 위 관계별 오늘의 행운 오행 전환 규칙(설기→생해주는 오행, 극제→
+    공격 오행을 억누르는 오행)은 명리학 문헌의 표준 공식이 아니라, 이
+    서비스에서 일관되게 사용하기 위해 채택한 근사 규칙임 (기존의
+    "신강→극하는 오행, 신약→생하는 오행"이라는 용신 판단 자체도 동일한
+    성격의 단순화 규칙).
 """
 
 import os
@@ -736,6 +770,114 @@ def format_daeun_summary(daeun: dict) -> str:
         lines.append(f"{period['age_from']}세~: {period['ganzhi']}")
     return "\n".join(lines)
 
+# ── 오늘의 행운 오행 계산 (원국 용신 + 오늘의 일진 상호작용) ──────────
+
+# 원국의 용신 오행(Y)을 기준점으로, 오늘의 오행(T)이 다음 5가지 중
+# 어디에 해당하는지 분류한다. 5개 오행이 서로 겹치지 않고 정확히
+# 5가지 관계로 전부 나뉜다 (용신 자신을 포함).
+#
+# ※ 이 5분류와, 아래 관계별 "오늘의 행운 오행 전환 규칙"은 오행
+#   상생상극 이론을 용신 하나를 기준으로 재구성한 것으로, 명리학
+#   문헌에 "오늘의 행운"을 계산하는 표준 공식이 별도로 존재하는 것은
+#   아니다. 이 서비스에서 일관되게 사용하기 위해 채택한 근사 규칙임을
+#   명시한다. (get_yongsin_element()의 "신강→극하는 오행, 신약→생하는
+#   오행"이라는 용신 판단 자체도 동일한 성격의 단순화 규칙이며, 이
+#   함수는 그 위에 한 단계 더 얹는 근사치이다.)
+#
+# ※ 오늘의 오행(T)은 현재 "오늘의 일간"만 기준으로 계산한다. 일지,
+#   십신, 합충까지 반영하는 것은 표준 공식이 정립돼 있지 않고 서비스
+#   복잡도 대비 이득이 불명확해 1차 구현 범위에서 제외했다 (TODO,
+#   위 [고도화 내역 - 3차] 참고).
+YONGSIN_TODAY_RELATIONS = ["강화", "생조", "설기", "극제", "통제"]
+
+
+def get_yongsin_today_relation(yongsin_element: str, today_element: str) -> str:
+    """
+    원국의 용신 오행(yongsin_element)과 오늘의 오행(today_element) 사이의
+    관계를 강화/생조/설기/극제/통제 중 하나로 분류.
+    """
+    if today_element == yongsin_element:
+        return "강화"
+    if GENERATES[today_element] == yongsin_element:
+        return "생조"
+    if GENERATES[yongsin_element] == today_element:
+        return "설기"
+    if CONTROLS[today_element] == yongsin_element:
+        return "극제"
+    if CONTROLS[yongsin_element] == today_element:
+        return "통제"
+    raise ValueError(
+        f"용신-오늘 관계 매칭 실패: yongsin={yongsin_element}, today={today_element}"
+    )
+
+
+def get_today_lucky_element(yongsin_element: str, today_element: str) -> dict:
+    """
+    원국의 용신 오행과 오늘의 오행 관계를 바탕으로 '오늘의 행운 오행'을 계산.
+
+    - 강화/생조/통제: 용신이 그대로 유지되거나 오히려 안정적인 상황이므로
+      행운 오행을 용신 그대로 유지.
+    - 설기: 용신 기운이 오늘 쪽으로 빠져나가는 상황이므로, 용신을 생해주는
+      오행으로 보충.
+    - 극제: 용신이 오늘의 기운에게 공격받는 상황이므로, 그 공격 오행을
+      억눌러주는 오행으로 방어.
+    ※ 이 전환 규칙 역시 표준 공식이 아니라 이 서비스가 채택한 근사 규칙이다.
+
+    Returns:
+        dict: {"element": "금", "relation": "설기"}
+    """
+    relation = get_yongsin_today_relation(yongsin_element, today_element)
+
+    if relation in ("강화", "생조", "통제"):
+        lucky_element = yongsin_element
+    elif relation == "설기":
+        lucky_element = GENERATED_BY[yongsin_element]
+    elif relation == "극제":
+        lucky_element = CONTROLLED_BY[today_element]
+    else:
+        raise ValueError(f"알 수 없는 관계: {relation}")
+
+    return {"element": lucky_element, "relation": relation}
+
+
+def get_today_lucky_info(saju: dict, today_saju: dict) -> dict:
+    """
+    원국(saju)의 용신과 오늘(today_saju)의 오행 관계를 계산해서,
+    오늘의 행운 컬러/방향/소재를 반환.
+
+    Args:
+        saju: 사용자의 원국 (get_saju() 결과)
+        today_saju: 오늘 날짜 기준 사주. get_saju(year, month, day, 12, 0)로
+                    계산 — 시간은 정오 고정, 오늘의 '일진'(일주)만 필요하므로
+                    시간에는 영향받지 않음.
+
+    Returns:
+        dict: {"element": "금", "color": "흰색·은색 계열",
+               "direction": "서쪽", "material": "금속 소재"}
+        ※ element는 내부 판단용으로 함께 반환하되, LLM 프롬프트에는
+          format_today_lucky_info()를 통해 컬러/방향/소재만 전달한다.
+    """
+    base_yongsin_element = get_yongsin_element(saju)
+    today_element = STEM_TO_ELEMENT[today_saju["day_stem"]]
+
+    today_lucky = get_today_lucky_element(base_yongsin_element, today_element)
+    info = ELEMENT_LUCKY_INFO[today_lucky["element"]]
+
+    return {"element": today_lucky["element"], **info}
+
+
+def format_today_lucky_info(lucky: dict) -> str:
+    """
+    get_today_lucky_info() 결과를 LLM 프롬프트에 넣기 좋은 텍스트로 정리.
+    행운 오행 이름이나 판단 근거는 포함하지 않고 컬러/방향/소재만 전달함
+    (LLM이 결과를 재해석하거나 다른 값을 임의로 제안하지 못하도록,
+    판단에 쓰인 근거 자체를 애초에 전달하지 않는 방식).
+    """
+    return (
+        f"행운 컬러: {lucky['color']}\n"
+        f"행운 방향: {lucky['direction']}\n"
+        f"행운 소재: {lucky['material']}"
+    )
 
 if __name__ == "__main__":
     saju = get_saju(1990, 10, 10, 14, 30)
