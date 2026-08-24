@@ -879,6 +879,21 @@ def format_today_lucky_info(lucky: dict) -> str:
         f"행운 소재: {lucky['material']}"
     )
 
+def get_today_ten_god(saju: dict, today_saju: dict) -> str:
+    """
+    오늘의 일간이 사용자의 원국 일간 기준으로 어떤 십성에 해당하는지 계산.
+    학업운 등 특정 십성 영역과 관련된 항목의 방향을 코드에서 결정론적으로
+    정해주기 위해 사용.
+
+    5분류 참고 (일간 기준 생/극/비화 관계):
+    - 인성(편인·정인): 나를 생해주는 오행 — 생조
+    - 비겁(비견·겁재): 나와 같은 오행 — 비화
+    - 식상(식신·상관): 내가 생하는 오행 — 설기
+    - 재성(편재·정재): 내가 극하는 오행 — 극출
+    - 관성(편관·정관): 나를 극하는 오행 — 피극
+    """
+    return get_ten_god(saju["day_stem"], today_saju["day_stem"])
+
 if __name__ == "__main__":
     saju = get_saju(1990, 10, 10, 14, 30)
     print(saju)

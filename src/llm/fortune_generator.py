@@ -11,8 +11,19 @@ LLM 호출 로직.
   오늘의 일진을 반영해 계산되도록 함. 자세한 배경은
   saju/calculator.py의 [고도화 내역 - 3차] 주석 참고.
 - today_iljin 계산에 쓰던 today_saju 객체를 그대로 재사용해서
-  get_saju() 중복 호출을 피함 (기존에는 get_today_iljin() 내부에서
-  한 번, 필요시 또 한 번 계산될 수 있었음).
+  get_saju() 중복 호출을 피함.
+
+[고도화 내역 - 4차]
+- 학업운 방향(집중이 잘 되는지/산만해지는지 등)이 LLM 호출마다
+  일관성 없이 뒤집히는 문제를 해결하기 위해, "오늘의 십성"을 코드에서
+  결정론적으로 계산해서 프롬프트에 추가로 전달함.
+- get_today_ten_god(saju, today_saju) 추가 호출: 원국 일간 기준으로
+  오늘의 일간이 어떤 십성(편인/정인/식신/상관/비견/겁재/편재/정재/
+  편관/정관)에 해당하는지 계산.
+- build_user_prompt()에 today_ten_god 인자 추가. prompts.py의
+  SYSTEM_PROMPT 규칙 12-1에서 이 값을 기준으로 학업운 방향을 판단하도록
+  지시하므로, LLM이 매번 다른 방향으로 임의 판단하지 않고 오늘의
+  십성 값에 따라 일관되게 서술하게 됨.
 """
 
 import os
@@ -24,7 +35,7 @@ from src.llm.prompts import SYSTEM_PROMPT, build_user_prompt
 from src.saju.calculator import (
     get_saju, get_today_lucky_info, format_today_lucky_info, get_saju_from_lunar,
     get_day_master_strength, get_ten_gods_summary, format_ten_gods_summary,
-    get_ten_gods_distribution_summary,
+    get_ten_gods_distribution_summary, get_today_ten_god,
 )
 load_dotenv()
 
@@ -66,7 +77,8 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
     today_str = today.strftime("%Y-%m-%d")
 
     # 오늘의 일진 계산에 쓰는 사주를 한 번만 계산해서, 일진 표기와
-    # 행운 컬러/방향/소재 계산(get_today_lucky_info) 양쪽에 재사용.
+    # 행운 컬러/방향/소재 계산(get_today_lucky_info), 오늘의 십성 계산
+    # (get_today_ten_god) 양쪽에 재사용.
     today_saju = get_saju(today.year, today.month, today.day, 12, 0)
     today_iljin = f"{today_saju['day_pillar']} ({today_saju['day_stem']}{today_saju['day_branch']})"
 
@@ -74,6 +86,8 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
 
     lucky = get_today_lucky_info(saju, today_saju)
     lucky_info = format_today_lucky_info(lucky)
+
+    today_ten_god = get_today_ten_god(saju, today_saju)
 
     strength = get_day_master_strength(saju)
     ten_gods_dict = get_ten_gods_summary(saju)
@@ -89,6 +103,7 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
                 strength=strength, ten_gods_summary=ten_gods_summary,
                 ten_gods_distribution=ten_gods_distribution,
                 hour_known=hour_known,
+                today_ten_god=today_ten_god,
             )},
         ],
     )
