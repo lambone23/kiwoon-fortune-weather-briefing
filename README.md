@@ -16,8 +16,8 @@ AI(LLM) 사주 해석 기반 오늘의 운세 & 날씨 브리핑 서비스
 - 계산 로직의 정확도는 신한은행 '오늘의 운세'를 참고 샘플로 삼아 실측 대조했습니다.
 - 사주 해석의 일관성과 신뢰도는 LLM Judge(Tier 1 형식·계산값 자동 채점 + Tier 2 회차 간 일관성 정성 평가)로 반복 검증했습니다.
 - 개발 원칙은 하나였습니다. 비용 없이 개발하고, 비용 없이 운영하기.
-- 11개 LLM을 정확성·간결성·가성비 기준으로 비교 검증해 GPT-5.6 Luna를 최종 채택했으며,  
-  추론 단계(reasoning effort) 조정으로 기존 대비 1회 호출 비용을 약 78% 절감했습니다.
+- 11개 LLM을 정확성·간결성·가성비 기준으로 비교 검증한 결과 GPT-5.6 Luna가 최적으로 확인되었으나,  
+  해당 API 키가 강의 수강 혜택으로 한시 제공된 것이라 만료되어, 실제 운영 모델은 GPT-5-mini로 유지하고 있습니다.
 ---
  
 ## 배포
@@ -51,10 +51,11 @@ AI(LLM) 사주 해석 기반 오늘의 운세 & 날씨 브리핑 서비스
 | 프론트엔드 | Next.js 16 (App Router) · TypeScript |
 | 백엔드 | FastAPI + uvicorn · SQLAlchemy (DB ORM) |
 | DB | NeonDB (PostgreSQL) |
-| AI / LLM | GPT-5.6 Luna (reasoning_effort: none) |
+| AI / LLM | GPT-5-mini (reasoning_effort: none) |
 | 외부 API | 기상청 (단기예보 · 초단기예보) · Brevo (이메일) |
 | 배포 | Vercel (프론트) · Render (백엔드) |
 | 스케줄링 | cron-job.org |
+
  
 ---
  
