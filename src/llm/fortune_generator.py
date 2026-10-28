@@ -136,8 +136,8 @@ def generate_fortune(saju: dict, saju_summary: str, today: date = None,
 
     response = client.chat.completions.create(
         model=OPENAI_MODEL,
-        #reasoning_effort="low",
-        reasoning_effort="none",
+        reasoning_effort="low", # 또는 "minimal"
+        #reasoning_effort="none", #LUNA의 경우 해당 (2026.08기준)
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": build_user_prompt(
