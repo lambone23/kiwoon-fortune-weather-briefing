@@ -20,6 +20,16 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("환경변수 DATABASE_URL이 설정되지 않았습니다. .env 또는 Render 환경변수를 확인하세요.")
+
+# 드라이버를 psycopg2로 명시.
+# SQLAlchemy 버전에 따라 'postgresql://' 기본 드라이버가 달라질 수 있어,
+# 설치된 psycopg2-binary를 쓰도록 스킴을 고정함.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 engine = create_engine(
     DATABASE_URL,
